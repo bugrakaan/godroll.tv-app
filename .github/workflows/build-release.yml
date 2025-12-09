@@ -1,0 +1,164 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'qml/**'
+      - 'resources/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/build-release.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  QT_VERSION: '6.8.1'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Get current version
+      id: get_version
+      shell: pwsh
+      run: |
+        $content = Get-Content "CMakeLists.txt" -Raw
+        if ($content -match 'project\(GodrollLauncher VERSION (\d+)\.(\d+)\.(\d+)') {
+          $major = $matches[1]
+          $minor = $matches[2]
+          $patch = $matches[3]
+          echo "CURRENT_VERSION=$major.$minor.$patch" >> $env:GITHUB_OUTPUT
+          echo "MAJOR=$major" >> $env:GITHUB_OUTPUT
+          echo "MINOR=$minor" >> $env:GITHUB_OUTPUT
+          echo "PATCH=$patch" >> $env:GITHUB_OUTPUT
+        }
+
+    - name: Increment patch version
+      id: new_version
+      shell: pwsh
+      run: |
+        $major = "${{ steps.get_version.outputs.MAJOR }}"
+        $minor = "${{ steps.get_version.outputs.MINOR }}"
+        $patch = [int]"${{ steps.get_version.outputs.PATCH }}" + 1
+        $newVersion = "$major.$minor.$patch"
+        echo "NEW_VERSION=$newVersion" >> $env:GITHUB_OUTPUT
+        echo "New version: $newVersion"
+
+    - name: Update version in CMakeLists.txt
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      shell: pwsh
+      run: |
+        $content = Get-Content "CMakeLists.txt" -Raw
+        $newVersion = "${{ steps.new_version.outputs.NEW_VERSION }}"
+        $content = $content -replace 'project\(GodrollLauncher VERSION \d+\.\d+\.\d+', "project(GodrollLauncher VERSION $newVersion"
+        Set-Content "CMakeLists.txt" $content -NoNewline
+        
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: ${{ env.QT_VERSION }}
+        host: 'windows'
+        target: 'desktop'
+        arch: 'win64_mingw'
+        modules: 'qtnetworkauth'
+        tools: 'tools_mingw1310'
+
+    - name: Configure CMake
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path build
+        cd build
+        cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      shell: pwsh
+      run: |
+        cd build
+        mingw32-make -j4
+
+    - name: Deploy Qt dependencies
+      shell: pwsh
+      run: |
+        cd build
+        New-Item -ItemType Directory -Force -Path deploy
+        Copy-Item "GodrollLauncher.exe" -Destination "deploy/"
+        cd deploy
+        windeployqt --release --qmldir ../qml GodrollLauncher.exe
+        
+    - name: Clean unnecessary files
+      shell: pwsh
+      run: |
+        cd build/deploy
+        # Remove unnecessary DLLs to reduce size
+        Remove-Item "opengl32sw.dll" -ErrorAction SilentlyContinue
+        Remove-Item "d3dcompiler_47.dll" -ErrorAction SilentlyContinue
+
+    - name: Create ZIP archive
+      shell: pwsh
+      run: |
+        $version = "${{ steps.new_version.outputs.NEW_VERSION }}"
+        Compress-Archive -Path "build/deploy/*" -DestinationPath "GodrollLauncher-v$version.zip"
+
+    - name: Commit version update
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      shell: pwsh
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add CMakeLists.txt
+        git diff --staged --quiet || git commit -m "chore: bump version to ${{ steps.new_version.outputs.NEW_VERSION }}"
+        git push
+
+    - name: Create Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.new_version.outputs.NEW_VERSION }}
+        name: Godroll Launcher v${{ steps.new_version.outputs.NEW_VERSION }}
+        body: |
+          ## Godroll Launcher v${{ steps.new_version.outputs.NEW_VERSION }}
+          
+          ### Search Features
+          - **Flag modifiers**: `-!` (unique), `-*` (all weapons), `-h` (holofoil), `-a` (adept)
+          - **Season filtering**: Flags apply to latest season only (except `-*`)
+          - **Fuzzy search**: Typo-tolerant multi-term search
+          - **Smart ranking**: Newer seasons prioritized in results
+          
+          ### Installation
+          1. Download `GodrollLauncher-v${{ steps.new_version.outputs.NEW_VERSION }}.zip`
+          2. Extract to your preferred location
+          3. Run `GodrollLauncher.exe`
+          
+          ### Keyboard Shortcuts
+          | Shortcut | Action |
+          |----------|--------|
+          | `Alt+G` | Toggle launcher (global) |
+          | `↑/↓` | Navigate results |
+          | `Enter` | Open weapon |
+          | `Middle-click` | Open weapon (keep launcher open) |
+          | `ESC` | Clear search / Close |
+        files: GodrollLauncher-v${{ steps.new_version.outputs.NEW_VERSION }}.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload artifact (for PRs)
+      if: github.event_name == 'pull_request'
+      uses: actions/upload-artifact@v4
+      with:
+        name: GodrollLauncher-v${{ steps.new_version.outputs.NEW_VERSION }}
+        path: build/deploy/
+        retention-days: 7
