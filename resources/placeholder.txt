@@ -1,0 +1,2 @@
+// Placeholder icon resource file
+// Icon will be added later
