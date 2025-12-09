@@ -1,6 +1,6 @@
 # Godroll Launcher
 
-A sleek, modern desktop launcher for quick Destiny 2 weapon search on [Godroll.tv](https://godroll.tv). Built with Qt 6 and QML for a beautiful, responsive experience.
+A desktop launcher for quick Destiny 2 weapon search on [Godroll.tv](https://godroll.tv). Built with Qt 6 and QML.
 
 ![Platform](https://img.shields.io/badge/Platform-Windows-blue)
 ![Qt](https://img.shields.io/badge/Qt-6.10+-green)
@@ -8,40 +8,33 @@ A sleek, modern desktop launcher for quick Destiny 2 weapon search on [Godroll.t
 
 ## Features
 
-### 🔍 Smart Search
-- **Multi-field search** - Search by weapon name, weapon type (Pulse Rifle, Hand Cannon, etc.), frame type (Aggressive, Rapid-Fire, etc.), or season
-- **Multi-term queries** - Type "pulse micro-missile" to find Pulse Rifles with Micro-Missile frame
-- **Hyphen normalization** - "high impact" matches "High-Impact Frame"
-- **Fuzzy matching** - Handles typos and partial matches
-- **Visual match highlighting** - Gold badges show which metadata matched your search
+### Search
+- Search by weapon name, weapon type, frame type, season, damage type, or ammo type
+- Multi-term queries - Type "pulse high-impact void" to find High-Impact Void Pulse Rifles
+- Fuzzy matching - Handles typos and partial matches
+- Season search - Type "s28", "Season 28", or "Revenant" to filter by season
 
-### 🎨 Beautiful UI
-- **Glassmorphism design** - Modern semi-transparent backdrop with blur effects
-- **Weapon icons** - High-quality weapon thumbnails from Bungie API
-- **Damage type icons** - Arc, Solar, Void, Stasis, Strand, Kinetic indicators
-- **Ammo type icons** - Primary, Special, Heavy ammo indicators
-- **Holofoil badge** - Animated rainbow gradient badge for holofoil weapons
-- **Season indicators** - Season number and name display
-- **Smooth animations** - Hover effects, color transitions, and list animations
+### Advanced Filters
+- **`-h`** - Show only holofoil weapons (or use "holofoil"/"holo" keyword)
+- **`-!`** - Show only one weapon per name (removes duplicates)
+- **`-*`** - Remove 50-result limit, show all matches
+- **`-a`** - Show only Adept/Harrowed/Timelost weapons (or use "adept" keyword)
+- **Combined** - Use together like `-!*h` or `-h -! -*`
 
-### ⌨️ Keyboard-First Experience
-- **Alt + G** - Global hotkey to toggle launcher (works system-wide)
-- **↑↓ Arrow keys** - Navigate through search results
-- **Enter** - Open selected weapon on godroll.tv
-- **Middle-click** - Open weapon without closing launcher
-- **ESC** - Close launcher or clear search
-- **Auto-focus** - Search input is focused on open
+### Keyboard Shortcuts
+- **`Alt + G`** - Toggle launcher (works globally)
+- **`↑` / `↓`** - Navigate results
+- **`Enter`** - Open selected weapon on godroll.tv
+- **`Middle-click`** - Open weapon without closing launcher
+- **`ESC`** - Close launcher or clear search
+- **`F5`** - Reload weapon data
 
-### 🖥️ System Integration
-- **System tray** - Lives in your system tray for quick access
-- **Auto-start option** - Optional Windows startup integration
-- **Minimal footprint** - Low memory and CPU usage
-- **Single instance** - Prevents multiple launcher windows
-
-### 📦 Data
-- **Live API** - Fetches weapon data from godroll.tv API
-- **Latest season filter** - Shows newest weapons by default
-- **Comprehensive metadata** - Weapon type, frame, season, damage type, ammo type, holofoil status
+### Interface
+- Weapon icons with damage type and ammo indicators
+- Animated holofoil badge for holofoil weapons
+- Season information with expansion names
+- System tray integration
+- Auto-start with Windows option
 
 ## Installation
 
@@ -50,57 +43,84 @@ A sleek, modern desktop launcher for quick Destiny 2 weapon search on [Godroll.t
 2. Download the latest `GodrollLauncher-vX.X.X.zip`
 3. Extract to your preferred location
 4. Run `GodrollLauncher.exe`
+5. (Optional) Right-click system tray icon to enable "Start with Windows"
 
 ### Build from Source
 
-#### Prerequisites
-- Qt 6.10+ with MinGW
-- CMake 3.16+
-
-#### Build
+Requirements: Qt 6.10+ with MinGW, CMake 3.16+
 
 ```bash
-cd app
 mkdir build
 cd build
 cmake -G "MinGW Makefiles" -DCMAKE_PREFIX_PATH=C:/Qt/6.10.1/mingw_64 ..
 cmake --build . --config Release
-```
-
-#### Run
-
-```bash
 ./GodrollLauncher.exe
 ```
 
 ## Usage
 
-| Shortcut | Action |
-|----------|--------|
-| `Alt + G` | Toggle launcher window (global hotkey) |
-| `↑` / `↓` | Navigate results |
-| `Enter` | Open weapon on godroll.tv |
-| `Middle-click` | Open weapon (keep launcher open) |
-| `ESC` | Close launcher / Clear search |
-
 ### Search Examples
-- `ace` → Ace of Spades
-- `pulse` → All Pulse Rifles
-- `aggressive` → All Aggressive Frame weapons
-- `season 25` → All Season 25 weapons
-- `revenant` → Season of the Revenant weapons
-- `pulse high-impact` → High-Impact Pulse Rifles
-- `void sword` → Void damage Swords
 
-## Tech Stack
+**Basic Search**
+```
+ace                    → Ace of Spades
+pulse                 → All Pulse Rifles
+aggressive            → All Aggressive Frame weapons
+void                  → All Void damage weapons
+```
 
-- **Framework**: Qt 6.10 with QML
-- **Language**: C++17
-- **Build**: CMake + MinGW
-- **API**: godroll.tv REST API
-- **CI/CD**: GitHub Actions (auto-build, auto-version, auto-release)
+**Multi-Term Search**
+```
+pulse high-impact     → High-Impact Pulse Rifles
+void sword            → Void damage Swords
+hand cannon solar     → Solar Hand Cannons
+```
+
+**Season Search**
+```
+s28                   → Season 28 weapons
+season 28             → Season 28 weapons
+revenant              → Season of the Revenant weapons
+```
+
+**Advanced Filters**
+```
+-h                    → Holofoil weapons only
+-h pulse              → Holofoil Pulse Rifles
+-! s28                → Unique weapons from Season 28
+-* pulse              → All Pulse Rifles (no limit)
+-a                    → Adept only
+-!*h                  → All unique holofoil weapons
+```
+
+### System Tray
+- Left-click to show/hide launcher
+- Right-click for options menu (auto-start, exit)
+
+## Troubleshooting
+
+**Launcher won't start**
+- Check if another instance is already running (check system tray)
+- Run from command line to see error messages
+
+**Global hotkey not working**
+- Check if another application is using `Alt+G`
+- Restart the launcher after closing conflicting applications
+
+**Weapons not loading**
+- Check internet connection
+- Press `F5` to reload
+
+## Links
+
+- Godroll.tv: https://godroll.tv
+- Repository: https://github.com/bugrakaan/godroll.tv-app
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT License
+
+---
+
+Created with ♥ by [Diabolic#5311](https://www.bungie.net/7/en/User/Profile/3/4611686018520824383)
 
