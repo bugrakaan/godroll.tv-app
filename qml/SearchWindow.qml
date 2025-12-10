@@ -8,6 +8,10 @@ Rectangle {
     height: calculatedHeight
     radius: 14
     color: "#CC1a1a1a"  // Semi-transparent dark background (80% opacity)
+    
+    // Enable layer for proper clipping with radius on macOS
+    layer.enabled: true
+    layer.smooth: true
 
     signal close()
     signal refocusNeeded()  // Emitted after opening URL in background to refocus window
@@ -83,12 +87,13 @@ Rectangle {
         }
     }
 
-    // Simple shadow with border
+    // Simple shadow with border - only on non-macOS or use DropShadow
     Rectangle {
+        visible: Qt.platform.os !== "osx"
         anchors.fill: parent
         anchors.margins: -4
         z: -1
-        radius: 16
+        radius: 18
         color: "transparent"
         border.color: "#10000000"
         border.width: 4

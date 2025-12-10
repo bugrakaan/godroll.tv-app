@@ -5,6 +5,12 @@
 #include <QPolygon>
 #include <QSettings>
 #include <QDir>
+#include <QFile>
+#include <QStandardPaths>
+
+#ifdef Q_OS_MAC
+#include <QProcess>
+#endif
 
 TrayIcon::TrayIcon(QObject *parent)
     : QObject(parent)
@@ -41,10 +47,7 @@ TrayIcon::TrayIcon(QObject *parent)
     titleAction->setFont(titleFont);
 
     // Create menu actions
-    m_showHideAction = new QAction("Show/Hide", this);
-    connect(m_showHideAction, &QAction::triggered, this, &TrayIcon::showHideRequested);
-
-    m_startupAction = new QAction("Start with Windows", this);
+    m_startupAction = new QAction("Start at Login", this);
     m_startupAction->setCheckable(true);
     m_startupAction->setChecked(isStartupEnabled());
     connect(m_startupAction, &QAction::toggled, this, &TrayIcon::onStartupToggled);
@@ -55,7 +58,6 @@ TrayIcon::TrayIcon(QObject *parent)
     // Build menu
     m_menu->addAction(titleAction);
     m_menu->addSeparator();
-    m_menu->addAction(m_showHideAction);
     m_menu->addAction(m_startupAction);
     m_menu->addSeparator();
     m_menu->addAction(m_exitAction);
@@ -95,12 +97,64 @@ void TrayIcon::onStartupToggled(bool checked)
 
 bool TrayIcon::isStartupEnabled() const
 {
+#ifdef Q_OS_MAC
+    QString launchAgentPath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) 
+                              + "/Library/LaunchAgents/tv.godroll.launcher.plist";
+    return QFile::exists(launchAgentPath);
+#else
     QSettings settings("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
     return settings.contains("GodrollLauncher");
+#endif
 }
 
 void TrayIcon::setStartupEnabled(bool enabled)
 {
+#ifdef Q_OS_MAC
+    QString launchAgentDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) 
+                             + "/Library/LaunchAgents";
+    QString launchAgentPath = launchAgentDir + "/tv.godroll.launcher.plist";
+    
+    if (enabled) {
+        // Create LaunchAgents directory if it doesn't exist
+        QDir().mkpath(launchAgentDir);
+        
+        // Get the app bundle path
+        QString appPath = QApplication::applicationDirPath();
+        // Go up from Contents/MacOS to get .app bundle
+        appPath = QDir(appPath).absolutePath();
+        appPath = appPath.replace("/Contents/MacOS", "");
+        
+        QString plistContent = QString(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+            "<plist version=\"1.0\">\n"
+            "<dict>\n"
+            "    <key>Label</key>\n"
+            "    <string>tv.godroll.launcher</string>\n"
+            "    <key>ProgramArguments</key>\n"
+            "    <array>\n"
+            "        <string>%1/Contents/MacOS/GodrollLauncher</string>\n"
+            "        <string>--hidden</string>\n"
+            "    </array>\n"
+            "    <key>RunAtLoad</key>\n"
+            "    <true/>\n"
+            "    <key>KeepAlive</key>\n"
+            "    <false/>\n"
+            "</dict>\n"
+            "</plist>\n"
+        ).arg(appPath);
+        
+        QFile file(launchAgentPath);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            file.write(plistContent.toUtf8());
+            file.close();
+            qDebug() << "Created launch agent at:" << launchAgentPath;
+        }
+    } else {
+        QFile::remove(launchAgentPath);
+        qDebug() << "Removed launch agent";
+    }
+#else
     QSettings settings("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
     
     if (enabled) {
@@ -110,6 +164,7 @@ void TrayIcon::setStartupEnabled(bool enabled)
     } else {
         settings.remove("GodrollLauncher");
     }
+#endif
 }
 
 QString TrayIcon::getExecutablePath() const

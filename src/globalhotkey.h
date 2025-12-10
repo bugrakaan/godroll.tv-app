@@ -8,6 +8,10 @@
 #include <Windows.h>
 #endif
 
+#ifdef Q_OS_MAC
+#include <Carbon/Carbon.h>
+#endif
+
 class GlobalHotkey : public QObject, public QAbstractNativeEventFilter
 {
     Q_OBJECT
@@ -33,6 +37,11 @@ private:
 #ifdef Q_OS_WIN
     int m_hotkeyId;
     HWND m_hwnd;
+#endif
+
+#ifdef Q_OS_MAC
+    EventHotKeyRef m_hotkeyRef;
+    static OSStatus hotkeyHandler(EventHandlerCallRef nextHandler, EventRef event, void *userData);
 #endif
 };
 

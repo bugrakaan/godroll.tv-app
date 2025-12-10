@@ -33,7 +33,6 @@ private:
 
     QSystemTrayIcon *m_trayIcon;
     QMenu *m_menu;
-    QAction *m_showHideAction;
     QAction *m_startupAction;
     QAction *m_exitAction;
 };

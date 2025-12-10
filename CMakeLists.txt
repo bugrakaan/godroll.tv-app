@@ -69,10 +69,30 @@ target_link_libraries(GodrollLauncher PRIVATE
     Qt6::Widgets
 )
 
+# macOS specific - link Carbon framework for global hotkeys
+if(APPLE)
+    target_link_libraries(GodrollLauncher PRIVATE
+        "-framework Carbon"
+        "-framework ApplicationServices"
+    )
+endif()
+
 # Windows specific
 if(WIN32)
     set_target_properties(GodrollLauncher PROPERTIES
         WIN32_EXECUTABLE TRUE
+    )
+endif()
+
+# macOS specific
+if(APPLE)
+    set_target_properties(GodrollLauncher PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_GUI_IDENTIFIER "tv.godroll.launcher"
+        MACOSX_BUNDLE_BUNDLE_NAME "Godroll Launcher"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/resources/Info.plist.in"
     )
 endif()
 
