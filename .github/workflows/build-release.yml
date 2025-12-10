@@ -95,7 +95,7 @@ jobs:
         New-Item -ItemType Directory -Force -Path deploy
         Copy-Item "GodrollLauncher.exe" -Destination "deploy/"
         cd deploy
-        windeployqt --release --qmldir ../qml GodrollLauncher.exe
+        windeployqt --release --qmldir ../../qml GodrollLauncher.exe
         
     - name: Clean unnecessary files
       shell: pwsh
