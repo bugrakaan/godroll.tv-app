@@ -14,7 +14,8 @@ int main(int argc, char *argv[])
     qDebug() << "Starting Godroll Launcher...";
     
     QApplication app(argc, argv);
-    app.setApplicationName("Godroll Launcher");
+    app.setApplicationName("Godroll.tv Launcher");
+    app.setApplicationDisplayName("Godroll.tv Launcher");
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("Godroll.tv");
     app.setQuitOnLastWindowClosed(false); // Keep running in background

@@ -6,7 +6,7 @@ Window {
     width: 700
     height: searchWindowComponent.height + 20  // Dynamic height based on content
     visible: !startHidden  // Start hidden if --hidden flag was passed
-    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | (trayIcon.showInDock ? Qt.Window : Qt.Tool)
     color: "transparent"
     opacity: 0  // Start invisible, animate in
 
