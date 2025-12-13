@@ -6,6 +6,7 @@
 #include <QNetworkReply>
 #include <QString>
 #include <QUrl>
+#include <QFile>
 
 class UpdateChecker : public QObject
 {
@@ -57,6 +58,7 @@ signals:
 
 private slots:
     void onNetworkReply(QNetworkReply *reply);
+    void onDownloadReadyRead();
     void onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal);
     void onDownloadFinished();
 
@@ -68,6 +70,7 @@ private:
     
     QNetworkAccessManager *m_networkManager;
     QNetworkReply *m_downloadReply = nullptr;
+    QFile *m_downloadFile = nullptr;
     QString m_currentVersion;
     QString m_latestVersion;
     QString m_releaseNotes;

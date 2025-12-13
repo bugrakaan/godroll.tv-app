@@ -234,13 +234,33 @@ void UpdateChecker::downloadAndInstall()
     qDebug() << "Downloading update from:" << m_downloadUrl;
     qDebug() << "Saving to:" << m_downloadedFilePath;
     
+    // Delete existing file if present
+    QFile::remove(m_downloadedFilePath);
+    
     // Start download
     QNetworkRequest request(url);
     request.setRawHeader("User-Agent", "GodrollLauncher");
+    request.setRawHeader("Accept", "application/octet-stream");
+    // GitHub uses redirects for asset downloads - must follow them
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    request.setMaximumRedirectsAllowed(10);
     
     m_downloadReply = m_networkManager->get(request);
     
+    // Open file for writing chunks as they arrive
+    m_downloadFile = new QFile(m_downloadedFilePath);
+    if (!m_downloadFile->open(QIODevice::WriteOnly)) {
+        qWarning() << "Failed to open file for writing:" << m_downloadedFilePath;
+        m_downloading = false;
+        emit downloadingChanged();
+        emit downloadFailed("Failed to create download file");
+        delete m_downloadFile;
+        m_downloadFile = nullptr;
+        return;
+    }
+    
+    connect(m_downloadReply, &QNetworkReply::readyRead,
+            this, &UpdateChecker::onDownloadReadyRead);
     connect(m_downloadReply, &QNetworkReply::downloadProgress, 
             this, &UpdateChecker::onDownloadProgress);
     connect(m_downloadReply, &QNetworkReply::finished,
@@ -259,61 +279,94 @@ void UpdateChecker::onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal)
     }
 }
 
+void UpdateChecker::onDownloadReadyRead()
+{
+    if (m_downloadReply && m_downloadFile) {
+        m_downloadFile->write(m_downloadReply->readAll());
+    }
+}
+
 void UpdateChecker::onDownloadFinished()
 {
     if (!m_downloadReply) return;
+    
+    qDebug() << "Download finished, error:" << m_downloadReply->error() 
+             << "HTTP status:" << m_downloadReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    
+    // Write any remaining data
+    if (m_downloadFile) {
+        m_downloadFile->write(m_downloadReply->readAll());
+        m_downloadFile->close();
+        qDebug() << "File size:" << QFileInfo(m_downloadedFilePath).size() << "bytes";
+    }
     
     if (m_downloadReply->error() != QNetworkReply::NoError) {
         m_downloading = false;
         emit downloadingChanged();
         qWarning() << "Download failed:" << m_downloadReply->errorString();
+        setStatusText("Download failed: " + m_downloadReply->errorString());
         emit downloadFailed(m_downloadReply->errorString());
         m_downloadReply->deleteLater();
         m_downloadReply = nullptr;
+        if (m_downloadFile) {
+            delete m_downloadFile;
+            m_downloadFile = nullptr;
+        }
         return;
     }
     
-    // Save the downloaded file
-    QFile file(m_downloadedFilePath);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(m_downloadReply->readAll());
-        file.close();
-        
-        qDebug() << "Download complete:" << m_downloadedFilePath;
-        
-        // Save the new version to settings so we can show it after restart
-        QSettings settings("Godroll.tv", "GodrollLauncher");
-        settings.setValue("updatedToVersion", m_latestVersion);
-        
-        emit downloadComplete(m_downloadedFilePath);
-        
-        // Check if it's a ZIP file
-        if (m_downloadedFilePath.endsWith(".zip", Qt::CaseInsensitive)) {
-            setStatusText("Extracting...");
-            // Extract and replace files
-            if (extractZipAndReplace(m_downloadedFilePath)) {
-                setStatusText("Restarting...");
-                // Restart the application
-                QString appPath = QCoreApplication::applicationFilePath();
-                qDebug() << "Restarting application:" << appPath;
-                QProcess::startDetached(appPath, QStringList());
-                QCoreApplication::quit();
-            } else {
-                m_downloading = false;
-                emit downloadingChanged();
-                emit downloadFailed("Failed to extract update. Please download manually.");
-            }
+    // Check file size
+    qint64 fileSize = QFileInfo(m_downloadedFilePath).size();
+    if (fileSize == 0) {
+        m_downloading = false;
+        emit downloadingChanged();
+        qWarning() << "Downloaded file is empty";
+        setStatusText("Download failed: Empty file");
+        emit downloadFailed("Downloaded file is empty");
+        m_downloadReply->deleteLater();
+        m_downloadReply = nullptr;
+        if (m_downloadFile) {
+            delete m_downloadFile;
+            m_downloadFile = nullptr;
+        }
+        return;
+    }
+    
+    qDebug() << "Download complete:" << m_downloadedFilePath << "(" << fileSize << "bytes)";
+    
+    // Clean up file handle
+    if (m_downloadFile) {
+        delete m_downloadFile;
+        m_downloadFile = nullptr;
+    }
+    
+    // Save the new version to settings so we can show it after restart
+    QSettings settings("Godroll.tv", "GodrollLauncher");
+    settings.setValue("updatedToVersion", m_latestVersion);
+    
+    emit downloadComplete(m_downloadedFilePath);
+    
+    // Check if it's a ZIP file
+    if (m_downloadedFilePath.endsWith(".zip", Qt::CaseInsensitive)) {
+        setStatusText("Extracting...");
+        // Extract and replace files
+        if (extractZipAndReplace(m_downloadedFilePath)) {
+            setStatusText("Restarting...");
+            // Restart the application
+            QString appPath = QCoreApplication::applicationFilePath();
+            qDebug() << "Restarting application:" << appPath;
+            QProcess::startDetached(appPath, QStringList());
+            QCoreApplication::quit();
         } else {
             m_downloading = false;
             emit downloadingChanged();
-            // Launch the installer and quit
-            launchInstallerAndQuit(m_downloadedFilePath);
+            emit downloadFailed("Failed to extract update. Please download manually.");
         }
     } else {
         m_downloading = false;
         emit downloadingChanged();
-        qWarning() << "Failed to save downloaded file:" << file.errorString();
-        emit downloadFailed("Failed to save file: " + file.errorString());
+        // Launch the installer and quit
+        launchInstallerAndQuit(m_downloadedFilePath);
     }
     
     m_downloadReply->deleteLater();
@@ -414,22 +467,22 @@ bool UpdateChecker::extractZipAndReplace(const QString &zipPath)
         stream << "timeout /t 2 /nobreak >nul\r\n"; // Wait for app to close
         
         // Copy all files from extracted directory to app directory
-        QString sourceDirWin = QString(sourceDir).replace("/", "\\\\");
-        QString appDirWin = QString(appDir).replace("/", "\\\\");
-        stream << QString("xcopy \"%1\\\\*\" \"%2\" /E /Y /I\r\n").arg(sourceDirWin, appDirWin);
+        QString sourceDirWin = QString(sourceDir).replace("/", "\\");
+        QString appDirWin = QString(appDir).replace("/", "\\");
+        stream << QString("xcopy \"%1\\*\" \"%2\\\" /E /Y /I /Q\r\n").arg(sourceDirWin, appDirWin);
         
         // Clean up
-        QString tempExtractDirWin = QString(tempExtractDir).replace("/", "\\\\");
-        QString zipPathWin = QString(zipPath).replace("/", "\\\\");
+        QString tempExtractDirWin = QString(tempExtractDir).replace("/", "\\");
+        QString zipPathWin = QString(zipPath).replace("/", "\\");
         stream << QString("rmdir /S /Q \"%1\"\r\n").arg(tempExtractDirWin);
         stream << QString("del \"%1\"\r\n").arg(zipPathWin);
         
         // Restart the application
-        QString appExeWin = QString(appExe).replace("/", "\\\\");
+        QString appExeWin = QString(appExe).replace("/", "\\");
         stream << QString("start \"\" \"%1\"\r\n").arg(appExeWin);
         
         // Delete this batch file
-        QString batchPathWin = QString(batchPath).replace("/", "\\\\");
+        QString batchPathWin = QString(batchPath).replace("/", "\\");
         stream << QString("del \"%1\"\r\n").arg(batchPathWin);
         
         batchFile.close();
