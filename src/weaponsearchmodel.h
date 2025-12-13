@@ -26,6 +26,7 @@ public:
         SeasonNameRole,
         MatchedFieldRole,  // Which field matched: "name", "weaponType", "frameType", "season", or ""
         IsHolofoilRole,
+        IsExoticRole,
         DamageTypeRole,
         DamageTypeIconRole,
         AmmoTypeRole,
@@ -73,7 +74,7 @@ private:
     
     // Weapon name helpers
     QString getBaseWeaponName(const QString &name) const;  // Removes (Adept), (Harrowed), etc.
-    bool isAdeptWeapon(const QString &name) const;          // Checks if weapon has special suffix
+    bool isAdeptWeapon(const QJsonObject &weapon) const;   // Checks if weapon is adept (API field or name suffix)
 
     QJsonArray m_allWeapons;
     QJsonArray m_filteredWeapons;

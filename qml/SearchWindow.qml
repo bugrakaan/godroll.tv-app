@@ -217,8 +217,8 @@ Rectangle {
             // Helper function to check if text contains a flag character
             function hasFlag(text, flag) {
                 var lower = text.toLowerCase()
-                // Check for the flag in any -xxx combination (e.g., -h, -!h, -h!, -!*ha, etc.)
-                var regex = new RegExp("-[!*ha]*" + flag + "[!*ha]*", "i")
+                // Check for the flag in any -xxx combination (e.g., -h, -!h, -h!, -!*hae, etc.)
+                var regex = new RegExp("-[!*hae]*" + flag + "[!*hae]*", "i")
                 return regex.test(lower)
             }
 
@@ -230,6 +230,8 @@ Rectangle {
             property bool hasNoLimitFlag: hasFlag(searchInput.text, "\\*")
             property bool hasAdeptFlag: hasFlag(searchInput.text, "a") ||
                                         /\badept\b/i.test(searchInput.text)
+            property bool hasExoticFlag: hasFlag(searchInput.text, "e") ||
+                                         /\bexotic\b/i.test(searchInput.text)
 
             // Badges container (right-aligned inside search input)
             Row {
@@ -351,6 +353,27 @@ Rectangle {
                         font.pixelSize: 11
                         font.weight: Font.Medium
                         color: "#22c55e"
+                    }
+                }
+
+                // Exotic flag badge
+                Rectangle {
+                    visible: badgesRow.parent.hasExoticFlag
+                    width: exoticText.width + 16
+                    height: resultCountBadge.height
+                    radius: 6
+                    color: "#2a2510"
+                    border.color: "#ffd700"
+                    border.width: 1
+
+                    Text {
+                        id: exoticText
+                        anchors.centerIn: parent
+                        text: "Exotic"
+                        font.family: searchWindow.mainFont
+                        font.pixelSize: 11
+                        font.weight: Font.Medium
+                        color: "#ffd700"
                     }
                 }
 

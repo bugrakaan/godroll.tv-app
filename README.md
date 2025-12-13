@@ -19,6 +19,7 @@ A desktop launcher for quick Destiny 2 weapon search on [Godroll.tv](https://god
 - **`-!`** - Show only one weapon per name (removes duplicates)
 - **`-*`** - Remove 50-result limit, show all matches
 - **`-a`** - Show only Adept/Harrowed/Timelost weapons (or use "adept" keyword)
+- **`-e`** - Show only Exotic weapons (or use "exotic" keyword)
 - **Combined** - Use together like `-!*h` or `-h -! -*`
 
 ### Keyboard Shortcuts
@@ -35,6 +36,12 @@ A desktop launcher for quick Destiny 2 weapon search on [Godroll.tv](https://god
 - Season information with expansion names
 - System tray integration
 - Auto-start with Windows option
+
+### Auto-Updater
+- Automatic update check on startup
+- Manual "Check for Updates" from tray menu
+- One-click download and install
+- Automatic ZIP extraction and file replacement
 
 ## Installation
 
@@ -90,7 +97,9 @@ revenant              → Season of the Revenant weapons
 -! s28                → Unique weapons from Season 28
 -* pulse              → All Pulse Rifles (no limit)
 -a                    → Adept only
+-e                    → Exotic weapons only
 -!*h                  → All unique holofoil weapons
+exotic hand cannon    → Exotic Hand Cannons
 ```
 
 ### System Tray

@@ -8,15 +8,21 @@
 #include "globalhotkey.h"
 #include "weaponloader.h"
 #include "trayicon.h"
+#include "updatechecker.h"
+
+// Version from CMake
+#ifndef APP_VERSION
+#define APP_VERSION "1.0.0"
+#endif
 
 int main(int argc, char *argv[])
 {
-    qDebug() << "Starting Godroll Launcher...";
+    qDebug() << "Starting Godroll Launcher v" << APP_VERSION;
     
     QApplication app(argc, argv);
     app.setApplicationName("Godroll.tv Launcher");
     app.setApplicationDisplayName("Godroll.tv Launcher");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion(APP_VERSION);
     app.setOrganizationName("Godroll.tv");
     app.setQuitOnLastWindowClosed(false); // Keep running in background
 
@@ -54,6 +60,7 @@ int main(int argc, char *argv[])
     WeaponSearchModel searchModel;
     GlobalHotkey hotkey;
     TrayIcon trayIcon;
+    UpdateChecker updateChecker;
     
     // Show tray icon
     trayIcon.show();
@@ -79,7 +86,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("hotkey", &hotkey);
     engine.rootContext()->setContextProperty("trayIcon", &trayIcon);
     engine.rootContext()->setContextProperty("weaponLoader", &weaponLoader);
+    engine.rootContext()->setContextProperty("updateChecker", &updateChecker);
     engine.rootContext()->setContextProperty("startHidden", startHidden);
+    engine.rootContext()->setContextProperty("appVersion", APP_VERSION);
 
     const QUrl url(QStringLiteral("qrc:/qt/qml/GodrollLauncher/qml/main.qml"));
     

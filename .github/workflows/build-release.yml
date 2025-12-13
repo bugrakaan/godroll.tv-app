@@ -131,10 +131,17 @@ jobs:
           ## Godroll Launcher v${{ steps.new_version.outputs.NEW_VERSION }}
           
           ### Search Features
-          - **Flag modifiers**: `-!` (unique), `-*` (all weapons), `-h` (holofoil), `-a` (adept)
+          - **Flag modifiers**: `-!` (unique), `-*` (all), `-h` (holofoil), `-a` (adept), `-e` (exotic)
+          - **Exotic filter**: Use `-e` flag or "exotic" keyword to filter exotic weapons
           - **Season filtering**: Flags apply to latest season only (except `-*`)
           - **Fuzzy search**: Typo-tolerant multi-term search
           - **Smart ranking**: Newer seasons prioritized in results
+          
+          ### Auto-Updater
+          - Automatic update check on startup
+          - Manual "Check for Updates" from system tray menu
+          - One-click download and automatic installation
+          - Shows current version in tray tooltip
           
           ### Installation
           1. Download `GodrollLauncher-v${{ steps.new_version.outputs.NEW_VERSION }}.zip`
@@ -149,6 +156,7 @@ jobs:
           | `Enter` | Open weapon |
           | `Middle-click` | Open weapon (keep launcher open) |
           | `ESC` | Clear search / Close |
+          | `F5` | Reload weapon data |
         files: GodrollLauncher-v${{ steps.new_version.outputs.NEW_VERSION }}.zip
         draft: false
         prerelease: false

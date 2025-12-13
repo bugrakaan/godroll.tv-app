@@ -53,6 +53,8 @@ QVariant WeaponSearchModel::data(const QModelIndex &index, int role) const
         return weapon["matchedField"].toString();
     case IsHolofoilRole:
         return weapon["isHolofoil"].toBool();
+    case IsExoticRole:
+        return weapon["isExotic"].toBool();
     case DamageTypeRole:
         return weapon["damageType"].toString();
     case DamageTypeIconRole:
@@ -78,6 +80,7 @@ QHash<int, QByteArray> WeaponSearchModel::roleNames() const
     roles[SeasonNameRole] = "seasonName";
     roles[MatchedFieldRole] = "matchedField";
     roles[IsHolofoilRole] = "isHolofoil";
+    roles[IsExoticRole] = "isExotic";
     roles[DamageTypeRole] = "damageType";
     roles[DamageTypeIconRole] = "damageTypeIcon";
     roles[AmmoTypeRole] = "ammoType";
@@ -132,9 +135,17 @@ QString WeaponSearchModel::getBaseWeaponName(const QString &name) const
 }
 
 // Helper: Check if weapon has a special suffix (Adept, Harrowed, Timelost, etc.)
-bool WeaponSearchModel::isAdeptWeapon(const QString &name) const
+// This checks both the API field and the weapon name
+bool WeaponSearchModel::isAdeptWeapon(const QJsonObject &weapon) const
 {
-    QString nameLower = name.toLower();
+    // Check API's isAdept field first
+    if (weapon["isAdept"].toBool()) {
+        return true;
+    }
+    
+    // Also check weapon name for (Adept), (Harrowed), (Timelost) suffixes
+    // This covers cases where API field might not be set for all variants
+    QString nameLower = weapon["name"].toString().toLower();
     return nameLower.contains("(adept)") || 
            nameLower.contains("(harrowed)") || 
            nameLower.contains("(timelost)");
@@ -144,19 +155,20 @@ void WeaponSearchModel::filterWeapons()
 {
     beginResetModel();
 
-    // Parse special flags first: -! (unique by name), -* (no limit), -h (holofoil only), -a (adept only)
+    // Parse special flags first: -! (unique by name), -* (no limit), -h (holofoil only), -a (adept only), -e (exotic only)
     bool uniqueByName = false;    // -! flag: show only one weapon per name (prefer non-holofoil, non-adept)
     bool noLimit = false;         // -* flag: remove result limit
     bool holofoilOnly = false;    // -h flag or "holofoil"/"holo" keyword: show only holofoil weapons
     bool adeptOnly = false;       // -a flag or "adept" keyword: show only adept/harrowed/timelost weapons
+    bool exoticOnly = false;      // -e flag or "exotic" keyword: show only exotic weapons
     
     QString queryLower = m_searchQuery.toLower().trimmed();
     
     // Check for flags in various formats:
     // - Combined: -!*ha, -h!*, etc.
     // - Separate: -h -* -!, -h-*-!, etc.
-    // Pattern matches any -X where X contains !, *, h, or a
-    QRegularExpression flagPattern("-([!*ha]+)");
+    // Pattern matches any -X where X contains !, *, h, a, or e
+    QRegularExpression flagPattern("-([!*hae]+)");
     QRegularExpressionMatchIterator flagMatches = flagPattern.globalMatch(queryLower);
     
     while (flagMatches.hasNext()) {
@@ -173,6 +185,9 @@ void WeaponSearchModel::filterWeapons()
         }
         if (flags.contains('a')) {
             adeptOnly = true;
+        }
+        if (flags.contains('e')) {
+            exoticOnly = true;
         }
     }
     
@@ -194,6 +209,12 @@ void WeaponSearchModel::filterWeapons()
     if (queryLower == "adept" || queryLower.startsWith("adept ") || queryLower.endsWith(" adept") || queryLower.contains(" adept ")) {
         adeptOnly = true;
         queryLower = queryLower.replace(QRegularExpression("\\badept\\b"), "").trimmed();
+    }
+    
+    // Check for "exotic" keyword
+    if (queryLower == "exotic" || queryLower.startsWith("exotic ") || queryLower.endsWith(" exotic") || queryLower.contains(" exotic ")) {
+        exoticOnly = true;
+        queryLower = queryLower.replace(QRegularExpression("\\bexotic\\b"), "").trimmed();
     }
 
     // If query is empty (after removing flags), show latest season weapons with filters applied
@@ -217,11 +238,17 @@ void WeaponSearchModel::filterWeapons()
                 if (seasonNum == m_latestSeason) {
                     QString name = weapon["name"].toString();
                     bool isHolofoil = weapon["isHolofoil"].toBool();
-                    bool isAdept = isAdeptWeapon(name);
+                    bool isExotic = weapon["isExotic"].toBool();
+                    bool isAdept = isAdeptWeapon(weapon);
                     
                     // Apply holofoil filter
                     if (holofoilOnly && !isHolofoil) {
                         continue; // Skip non-holofoil weapons when holofoil filter is active
+                    }
+                    
+                    // Apply exotic filter
+                    if (exoticOnly && !isExotic) {
+                        continue; // Skip non-exotic weapons when exotic filter is active
                     }
                     
                     // Apply adept filter
@@ -246,7 +273,7 @@ void WeaponSearchModel::filterWeapons()
                                 if (otherWeapon["seasonNumber"].toInt() == m_latestSeason &&
                                     getBaseWeaponName(otherName) == getBaseWeaponName(name) &&
                                     !otherWeapon["isHolofoil"].toBool() &&
-                                    !isAdeptWeapon(otherName)) {
+                                    !isAdeptWeapon(otherWeapon)) {
                                     hasBaseVersion = true;
                                     break;
                                 }
@@ -305,13 +332,19 @@ void WeaponSearchModel::filterWeapons()
         for (const QJsonValue &value : m_allWeapons) {
             QJsonObject weapon = value.toObject();
             bool isHolofoil = weapon["isHolofoil"].toBool();
+            bool isExotic = weapon["isExotic"].toBool();
             QString weaponName = weapon["name"].toString();
-            bool isAdept = isAdeptWeapon(weaponName);
+            bool isAdept = isAdeptWeapon(weapon);
             QString baseName = getBaseWeaponName(weaponName);
             
             // Apply holofoil filter
             if (holofoilOnly && !isHolofoil) {
                 continue; // Skip non-holofoil weapons when holofoil filter is active
+            }
+            
+            // Apply exotic filter
+            if (exoticOnly && !isExotic) {
+                continue; // Skip non-exotic weapons when exotic filter is active
             }
             
             // Apply adept filter
@@ -472,10 +505,10 @@ void WeaponSearchModel::filterWeapons()
         // Determine result limit:
         // - noLimit flag (-*): no limit
         // - isSeasonSearch (s27, Season 27): no limit  
-        // - holofoilOnly, uniqueByName, or adeptOnly with no other search: no limit
+        // - holofoilOnly, uniqueByName, adeptOnly, or exoticOnly with no other search: no limit
         // - Otherwise: limit to 50
         m_filteredWeapons = QJsonArray();
-        bool shouldRemoveLimit = noLimit || isSeasonSearch || ((holofoilOnly || uniqueByName || adeptOnly) && searchTerms.isEmpty());
+        bool shouldRemoveLimit = noLimit || isSeasonSearch || ((holofoilOnly || uniqueByName || adeptOnly || exoticOnly) && searchTerms.isEmpty());
         int maxResults = shouldRemoveLimit ? scoredWeapons.size() : qMin(50, static_cast<int>(scoredWeapons.size()));
         for (int i = 0; i < maxResults; ++i) {
             m_filteredWeapons.append(std::get<3>(scoredWeapons[i]));

@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFile>
 #include <QStandardPaths>
+#include <QCoreApplication>
 
 #ifdef Q_OS_MAC
 #include <QProcess>
@@ -34,13 +35,16 @@ TrayIcon::TrayIcon(QObject *parent)
     } else {
         m_trayIcon->setIcon(appIcon);
     }
-    m_trayIcon->setToolTip("Godroll.tv Launcher");
+    
+    // Set tooltip with version
+    QString version = QCoreApplication::applicationVersion();
+    m_trayIcon->setToolTip(QString("Godroll.tv Launcher v%1").arg(version));
 
     // Auto-register startup on first run, or update path if already registered
     initializeStartup();
 
-    // Create title action (non-clickable header)
-    QAction *titleAction = new QAction("Godroll.tv", this);
+    // Create title action with version (non-clickable header)
+    QAction *titleAction = new QAction(QString("Godroll.tv v%1").arg(version), this);
     titleAction->setEnabled(false);  // Make it non-clickable
     QFont titleFont;
     titleFont.setBold(true);
@@ -52,6 +56,9 @@ TrayIcon::TrayIcon(QObject *parent)
     m_startupAction->setChecked(isStartupEnabled());
     connect(m_startupAction, &QAction::toggled, this, &TrayIcon::onStartupToggled);
 
+    m_checkUpdatesAction = new QAction("Check for Updates", this);
+    connect(m_checkUpdatesAction, &QAction::triggered, this, &TrayIcon::checkForUpdatesRequested);
+
     m_exitAction = new QAction("Exit", this);
     connect(m_exitAction, &QAction::triggered, this, &TrayIcon::exitRequested);
 
@@ -59,6 +66,7 @@ TrayIcon::TrayIcon(QObject *parent)
     m_menu->addAction(titleAction);
     m_menu->addSeparator();
     m_menu->addAction(m_startupAction);
+    m_menu->addAction(m_checkUpdatesAction);
     m_menu->addSeparator();
     m_menu->addAction(m_exitAction);
 

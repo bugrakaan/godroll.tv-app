@@ -14,6 +14,9 @@ find_package(Qt6 REQUIRED COMPONENTS Core Quick Network Widgets)
 
 qt_standard_project_setup()
 
+# Pass version to C++ code
+add_definitions(-DAPP_VERSION="${PROJECT_VERSION}")
+
 # Set Qt policies
 if(POLICY CMP0071)
   cmake_policy(SET CMP0071 NEW)
@@ -28,6 +31,7 @@ set(SOURCES
     src/globalhotkey.cpp
     src/weaponloader.cpp
     src/trayicon.cpp
+    src/updatechecker.cpp
 )
 
 set(HEADERS
@@ -36,6 +40,7 @@ set(HEADERS
     src/weaponloader.h
     src/trayicon.h
     src/seasonmapping.h
+    src/updatechecker.h
 )
 
 # Windows icon resource
@@ -56,6 +61,7 @@ qt_add_qml_module(GodrollLauncher
         qml/main.qml
         qml/SearchWindow.qml
         qml/WeaponItem.qml
+        qml/UpdateDialog.qml
     RESOURCES
         resources/logo.svg
         resources/search-icon.svg

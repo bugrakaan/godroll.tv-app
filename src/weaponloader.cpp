@@ -100,6 +100,11 @@ void WeaponLoader::onNetworkReply(QNetworkReply *reply)
                 for (const QJsonValue &value : weapons) {
                     QJsonObject weapon = value.toObject();
                     
+                    // Extract exotic status from tierType (6 = Exotic) or tierTypeName
+                    bool isExotic = (weapon["tierType"].toInt() == 6) || 
+                                   (weapon["tierTypeName"].toString().toLower() == "exotic");
+                    weapon["isExotic"] = isExotic;
+                    
                     // Extract season from traitIds
                     if (weapon.contains("traitIds")) {
                         QJsonArray traitIds = weapon["traitIds"].toArray();
