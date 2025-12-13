@@ -226,6 +226,25 @@ Window {
         }
     }
     
+    // Update Dialog overlay - blocks mouse events when dialog is visible
+    Rectangle {
+        id: updateDialogOverlay
+        anchors.fill: parent
+        color: "transparent"
+        visible: updateDialog.visible
+        z: 99
+        
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.AllButtons
+            onClicked: (mouse) => { mouse.accepted = true }
+            onPressed: (mouse) => { mouse.accepted = true }
+            onReleased: (mouse) => { mouse.accepted = true }
+            onWheel: (wheel) => { wheel.accepted = true }
+        }
+    }
+    
     // Update Dialog - centered overlay
     UpdateDialog {
         id: updateDialog
