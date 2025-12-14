@@ -348,20 +348,29 @@ void UpdateChecker::onDownloadFinished()
     
     // Check if it's a ZIP file
     if (m_downloadedFilePath.endsWith(".zip", Qt::CaseInsensitive)) {
-        setStatusText("Extracting...");
-        // Extract and replace files
-        if (extractZipAndReplace(m_downloadedFilePath)) {
-            setStatusText("Restarting...");
-            // Restart the application
-            QString appPath = QCoreApplication::applicationFilePath();
-            qDebug() << "Restarting application:" << appPath;
-            QProcess::startDetached(appPath, QStringList());
-            QCoreApplication::quit();
-        } else {
-            m_downloading = false;
-            emit downloadingChanged();
-            emit downloadFailed("Failed to extract update. Please download manually.");
-        }
+        setStatusText("Installing...");
+        m_downloadProgress = 100;
+        emit downloadProgressChanged();
+        
+        // Small delay before starting installation to show "Installing..." message
+        QTimer::singleShot(150, this, [this]() {
+            setStatusText("Extracting files...");
+            // Extract and replace files
+            if (extractZipAndReplace(m_downloadedFilePath)) {
+                setStatusText("Restarting...");
+                // Small delay before restart
+                QTimer::singleShot(100, this, []() {
+                    QString appPath = QCoreApplication::applicationFilePath();
+                    qDebug() << "Restarting application:" << appPath;
+                    QProcess::startDetached(appPath, QStringList());
+                    QCoreApplication::quit();
+                });
+            } else {
+                m_downloading = false;
+                emit downloadingChanged();
+                emit downloadFailed("Failed to extract update. Please download manually.");
+            }
+        });
     } else {
         m_downloading = false;
         emit downloadingChanged();
