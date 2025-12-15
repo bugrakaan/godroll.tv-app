@@ -526,8 +526,26 @@ QString WeaponSearchModel::normalizeText(const QString &text) const
     normalized.replace('_', ' ');
     normalized.replace('\'', ' ');
     normalized.replace('"', ' ');
-    // Remove extra spaces
-    return normalized.simplified().toLower();
+    
+    // Unicode normalization: decompose characters (NFD) and remove diacritics
+    // This handles all languages: Turkish İ/ı, German ü/ö, French é/è, Spanish ñ, etc.
+    normalized = normalized.normalized(QString::NormalizationForm_D);
+    
+    // Remove all combining diacritical marks (Unicode category Mn)
+    QString result;
+    result.reserve(normalized.size());
+    for (const QChar &ch : normalized) {
+        // Keep only base characters, skip combining marks (category Mark_NonSpacing)
+        if (ch.category() != QChar::Mark_NonSpacing) {
+            result.append(ch);
+        }
+    }
+    
+    // Special handling for Turkish dotless ı (doesn't decompose)
+    result.replace(QChar(0x0131), 'i');  // ı -> i
+    
+    // Remove extra spaces and convert to lowercase
+    return result.simplified().toLower();
 }
 
 // Levenshtein distance calculation for typo tolerance (Fuse.js style)
