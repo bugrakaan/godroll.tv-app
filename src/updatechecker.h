@@ -7,6 +7,7 @@
 #include <QString>
 #include <QUrl>
 #include <QFile>
+#include <QFutureWatcher>
 
 class UpdateChecker : public QObject
 {
@@ -61,11 +62,13 @@ private slots:
     void onDownloadReadyRead();
     void onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal);
     void onDownloadFinished();
+    void onExtractionFinished();
 
 private:
     bool isNewerVersion(const QString &latest, const QString &current) const;
     void launchInstallerAndQuit(const QString &installerPath);
-    bool extractZipAndReplace(const QString &zipPath);
+    void startAsyncExtraction(const QString &zipPath);
+    static bool extractZipAndReplace(const QString &zipPath, const QString &appDir, const QString &appExe);
     void setStatusText(const QString &text);
     
     QNetworkAccessManager *m_networkManager;
@@ -86,6 +89,8 @@ private:
     
     static const QString GITHUB_API_URL;
     static const QString GITHUB_REPO;
+    
+    QFutureWatcher<bool> *m_extractionWatcher = nullptr;
 };
 
 #endif // UPDATECHECKER_H

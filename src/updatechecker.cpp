@@ -14,6 +14,7 @@
 #include <QFileInfo>
 #include <QDirIterator>
 #include <QTextStream>
+#include <QtConcurrent>
 
 const QString UpdateChecker::GITHUB_API_URL = "https://api.github.com/repos/%1/releases/latest";
 const QString UpdateChecker::GITHUB_REPO = "bugrakaan/godroll.tv-app";
@@ -355,21 +356,8 @@ void UpdateChecker::onDownloadFinished()
         // Small delay before starting installation to show "Installing..." message
         QTimer::singleShot(150, this, [this]() {
             setStatusText("Extracting files...");
-            // Extract and replace files
-            if (extractZipAndReplace(m_downloadedFilePath)) {
-                setStatusText("Restarting...");
-                // Small delay before restart
-                QTimer::singleShot(100, this, []() {
-                    QString appPath = QCoreApplication::applicationFilePath();
-                    qDebug() << "Restarting application:" << appPath;
-                    QProcess::startDetached(appPath, QStringList());
-                    QCoreApplication::quit();
-                });
-            } else {
-                m_downloading = false;
-                emit downloadingChanged();
-                emit downloadFailed("Failed to extract update. Please download manually.");
-            }
+            // Extract asynchronously to avoid UI freeze
+            startAsyncExtraction(m_downloadedFilePath);
         });
     } else {
         m_downloading = false;
@@ -417,13 +405,52 @@ void UpdateChecker::setStatusText(const QString &text)
     }
 }
 
-bool UpdateChecker::extractZipAndReplace(const QString &zipPath)
+void UpdateChecker::startAsyncExtraction(const QString &zipPath)
+{
+    // Store app paths before starting the thread (must be called from main thread)
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString appExe = QCoreApplication::applicationFilePath();
+    
+    // Create watcher if needed
+    if (!m_extractionWatcher) {
+        m_extractionWatcher = new QFutureWatcher<bool>(this);
+        connect(m_extractionWatcher, &QFutureWatcher<bool>::finished,
+                this, &UpdateChecker::onExtractionFinished);
+    }
+    
+    // Run extraction in a separate thread
+    QFuture<bool> future = QtConcurrent::run([zipPath, appDir, appExe]() {
+        return extractZipAndReplace(zipPath, appDir, appExe);
+    });
+    
+    m_extractionWatcher->setFuture(future);
+}
+
+void UpdateChecker::onExtractionFinished()
+{
+    bool success = m_extractionWatcher->result();
+    
+    if (success) {
+        setStatusText("Restarting...");
+        // Small delay before restart
+        QTimer::singleShot(100, this, []() {
+            QString appPath = QCoreApplication::applicationFilePath();
+            qDebug() << "Restarting application:" << appPath;
+            QProcess::startDetached(appPath, QStringList());
+            QCoreApplication::quit();
+        });
+    } else {
+        m_downloading = false;
+        emit downloadingChanged();
+        emit downloadFailed("Failed to extract update. Please download manually.");
+    }
+}
+
+bool UpdateChecker::extractZipAndReplace(const QString &zipPath, const QString &appDir, const QString &appExe)
 {
     qDebug() << "Extracting ZIP:" << zipPath;
     
     // Get the application directory
-    QString appDir = QCoreApplication::applicationDirPath();
-    QString appExe = QCoreApplication::applicationFilePath();
     QString tempExtractDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/GodrollUpdate";
     
     // Clean up any previous temp extraction

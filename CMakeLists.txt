@@ -10,7 +10,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 # Qt packages
-find_package(Qt6 REQUIRED COMPONENTS Core Quick Network Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Quick Network Widgets Concurrent)
 
 qt_standard_project_setup()
 
@@ -73,6 +73,7 @@ target_link_libraries(GodrollLauncher PRIVATE
     Qt6::Quick
     Qt6::Network
     Qt6::Widgets
+    Qt6::Concurrent
 )
 
 # macOS specific - link Carbon framework for global hotkeys
