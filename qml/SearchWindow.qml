@@ -192,6 +192,7 @@ Rectangle {
 
         // Search input
         Rectangle {
+            id: searchInputContainer
             Layout.fillWidth: true
             height: 60
             radius: 10
@@ -233,19 +234,35 @@ Rectangle {
             property bool hasExoticFlag: hasFlag(searchInput.text, "e") ||
                                          /\bexotic\b/i.test(searchInput.text)
 
-            // Badges container (right-aligned inside search input)
-            Row {
-                id: badgesRow
+            // Badges container wrapper (right-aligned inside search input)
+            Item {
+                id: badgesWrapper
                 anchors.right: parent.right
                 anchors.rightMargin: 14
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 6
+                width: badgesRow.width
+                height: badgesRow.height
                 visible: !isLoading && (searchInput.text.length > 0 || searchModel.showLatestSeason)
+                z: 10  // Above the input area MouseArea
+                
+                // MouseArea to catch clicks on badges and prevent window hide
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.ArrowCursor
+                    onClicked: function(mouse) {
+                        searchInput.forceActiveFocus()
+                        mouse.accepted = true
+                    }
+                }
+                
+                Row {
+                    id: badgesRow
+                    spacing: 6
 
-                // Holofoil flag badge with rainbow animation (same as WeaponItem)
+                    // Holofoil flag badge with rainbow animation (same as WeaponItem)
                 Rectangle {
                     id: holofoilFlagBadge
-                    visible: badgesRow.parent.hasHolofoilFlag
+                    visible: searchInputContainer.hasHolofoilFlag
                     color: "#2d1f4e"  // Dark purple background
                     border.color: "#8b5cf6"
                     border.width: 1
@@ -295,7 +312,7 @@ Rectangle {
 
                 // Unique flag badge
                 Rectangle {
-                    visible: badgesRow.parent.hasUniqueFlag
+                    visible: searchInputContainer.hasUniqueFlag
                     width: uniqueText.width + 16
                     height: resultCountBadge.height
                     radius: 6
@@ -316,7 +333,7 @@ Rectangle {
 
                 // No Limit flag badge
                 Rectangle {
-                    visible: badgesRow.parent.hasNoLimitFlag
+                    visible: searchInputContainer.hasNoLimitFlag
                     width: noLimitText.width + 16
                     height: resultCountBadge.height
                     radius: 6
@@ -337,7 +354,7 @@ Rectangle {
 
                 // Adept flag badge
                 Rectangle {
-                    visible: badgesRow.parent.hasAdeptFlag
+                    visible: searchInputContainer.hasAdeptFlag
                     width: adeptText.width + 16
                     height: resultCountBadge.height
                     radius: 6
@@ -358,7 +375,7 @@ Rectangle {
 
                 // Exotic flag badge
                 Rectangle {
-                    visible: badgesRow.parent.hasExoticFlag
+                    visible: searchInputContainer.hasExoticFlag
                     width: exoticText.width + 16
                     height: resultCountBadge.height
                     radius: 6
@@ -408,13 +425,14 @@ Rectangle {
                         }
                     }
                 }
-            }
+                }  // Close Row (badgesRow)
+            }  // Close Item (badgesWrapper)
 
             TextInput {
                 id: searchInput
                 anchors.fill: parent
                 anchors.leftMargin: 52
-                anchors.rightMargin: badgesRow.visible ? badgesRow.width + 24 : 20
+                anchors.rightMargin: badgesWrapper.visible ? badgesRow.width + 24 : 20
                 verticalAlignment: TextInput.AlignVCenter
                 font.family: searchWindow.mainFont
                 font.pixelSize: 22
@@ -516,6 +534,28 @@ Rectangle {
                 font.pixelSize: 22
                 color: "#666666"
                 visible: searchInput.text.length === 0
+            }
+            
+            // MouseArea to catch clicks on the entire input container (including badges)
+            // This prevents the window from hiding when clicking anywhere inside the search input area
+            MouseArea {
+                anchors.fill: parent
+                z: 1  // Below badges MouseArea
+                // Let TextInput handle its own mouse events
+                propagateComposedEvents: true
+                // Show text cursor when hovering over input area (not over badges)
+                cursorShape: Qt.IBeamCursor
+                
+                onClicked: function(mouse) {
+                    searchInput.forceActiveFocus()
+                    // Don't propagate to prevent window hide
+                    mouse.accepted = true
+                }
+                
+                onPressed: function(mouse) {
+                    // Allow TextInput to receive the click for text selection
+                    mouse.accepted = false
+                }
             }
         }
 
