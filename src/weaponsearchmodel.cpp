@@ -600,25 +600,34 @@ double WeaponSearchModel::fuseFuzzyMatch(const QString &text, const QString &pat
         return 1.0;
     }
     
-    // Contains match - high score based on position
+    // Check if text STARTS with pattern - highest priority after perfect match
+    if (normalizedText.startsWith(normalizedPattern)) {
+        // Longer pattern relative to text = higher score
+        double lengthRatio = static_cast<double>(normalizedPattern.length()) / normalizedText.length();
+        return 0.95 + (lengthRatio * 0.04);  // Range: 0.95 - 0.99
+    }
+    
+    // Check if any WORD starts with pattern - very high priority
+    QStringList words = normalizedText.split(' ', Qt::SkipEmptyParts);
+    for (int i = 0; i < words.size(); ++i) {
+        if (words[i].startsWith(normalizedPattern)) {
+            // First word match is higher than later word matches
+            double wordPositionBonus = 1.0 - (static_cast<double>(i) / words.size() * 0.05);
+            return 0.88 + (wordPositionBonus * 0.06);  // Range: 0.88 - 0.94
+        }
+    }
+    
+    // Contains match - lower priority than starts-with
     int containsIndex = normalizedText.indexOf(normalizedPattern);
     if (containsIndex != -1) {
         // Earlier position = higher score
         double positionBonus = 1.0 - (static_cast<double>(containsIndex) / normalizedText.length() * 0.1);
         // Longer pattern relative to text = higher score
         double lengthRatio = static_cast<double>(normalizedPattern.length()) / normalizedText.length();
-        return 0.85 + (positionBonus * 0.1) + (lengthRatio * 0.05);
+        return 0.75 + (positionBonus * 0.08) + (lengthRatio * 0.04);  // Range: 0.75 - 0.87
     }
     
-    // Word starts with pattern (e.g., "pul" matches "Pulse Rifle")
-    QStringList words = normalizedText.split(' ', Qt::SkipEmptyParts);
-    for (const QString &word : words) {
-        if (word.startsWith(normalizedPattern)) {
-            return 0.8;
-        }
-    }
-    
-    // Prefix match on any word
+    // Prefix match on any word with typo tolerance
     for (const QString &word : words) {
         if (normalizedPattern.length() <= word.length()) {
             QString wordPrefix = word.left(normalizedPattern.length());
