@@ -130,41 +130,35 @@ jobs:
         body: |
           ## Godroll Launcher v${{ steps.new_version.outputs.NEW_VERSION }}
           
-          ### Search Features
-          - **Flag modifiers**: `-!` (unique), `-*` (all), `-h` (holofoil), `-a` (adept), `-e` (exotic)
-          - **Source filter**: `-s <source>` to filter by raid/dungeon/activity (e.g., `-s se` for Salvation's Edge)
-          - **Smart matching**: Exact source matches take priority over partial matches
-          - **Filter flags search all**: Using `-h`, `-a`, or `-e` alone searches all weapons
-          - **Fuzzy search**: Typo-tolerant multi-term search with prefix priority
-          - **Smart ranking**: Weapons starting with search term ranked higher
+          ### Filters
+          - `-h` holofoil only
+          - `-a` adept/harrowed/timelost only
+          - `-e` exotic only
+          - `-!` unique weapons (one per name)
+          - `-*` remove result limit
+          - `-s <source>` filter by source
           
-          ### Source Filter Examples
-          - `-s se` → Salvation's Edge
-          - `-s vog` → Vault of Glass
-          - `-s crotas` → Crota's End
-          - `-s trials` → Trials of Osiris
-          - `-s nightfall` → Nightfall
+          ### Source Filter
+          ```
+          -s se        Salvation's Edge
+          -s vog       Vault of Glass
+          -s crotas    Crota's End
+          -s trials    Trials of Osiris
+          -s nightfall Nightfall
+          -s gambit    Gambit
+          ```
           
-          ### Auto-Updater
-          - Automatic update check on startup
-          - Manual "Check for Updates" from system tray menu
-          - One-click download and automatic installation
-          - Shows current version in tray tooltip
+          ### Search
+          - Multi-term: `pulse high-impact void`
+          - Season: `s28` or `Season 28`
+          - Typo tolerance built-in
+          - Prefix matches ranked higher
           
-          ### Installation
-          1. Download `GodrollLauncher-v${{ steps.new_version.outputs.NEW_VERSION }}.zip`
-          2. Extract to your preferred location
-          3. Run `GodrollLauncher.exe`
+          ### Shortcuts
+          `Alt+G` toggle | `↑↓` navigate | `Enter` open | `Middle-click` open in background | `Esc` close | `F5` reload
           
-          ### Keyboard Shortcuts
-          | Shortcut | Action |
-          |----------|--------|
-          | `Alt+G` | Toggle launcher (global) |
-          | `↑/↓` | Navigate results |
-          | `Enter` | Open weapon |
-          | `Middle-click` | Open weapon (keep launcher open) |
-          | `ESC` | Clear search / Close |
-          | `F5` | Reload weapon data |
+          ### Install
+          Extract ZIP, run `GodrollLauncher.exe`
         files: GodrollLauncher-v${{ steps.new_version.outputs.NEW_VERSION }}.zip
         draft: false
         prerelease: false
