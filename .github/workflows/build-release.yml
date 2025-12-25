@@ -132,10 +132,18 @@ jobs:
           
           ### Search Features
           - **Flag modifiers**: `-!` (unique), `-*` (all), `-h` (holofoil), `-a` (adept), `-e` (exotic)
-          - **Exotic filter**: Use `-e` flag or "exotic" keyword to filter exotic weapons
-          - **Season filtering**: Flags apply to latest season only (except `-*`)
-          - **Fuzzy search**: Typo-tolerant multi-term search
-          - **Smart ranking**: Newer seasons prioritized in results
+          - **Source filter**: `-s <source>` to filter by raid/dungeon/activity (e.g., `-s se` for Salvation's Edge)
+          - **Smart matching**: Exact source matches take priority over partial matches
+          - **Filter flags search all**: Using `-h`, `-a`, or `-e` alone searches all weapons
+          - **Fuzzy search**: Typo-tolerant multi-term search with prefix priority
+          - **Smart ranking**: Weapons starting with search term ranked higher
+          
+          ### Source Filter Examples
+          - `-s se` → Salvation's Edge
+          - `-s vog` → Vault of Glass
+          - `-s crotas` → Crota's End
+          - `-s trials` → Trials of Osiris
+          - `-s nightfall` → Nightfall
           
           ### Auto-Updater
           - Automatic update check on startup
