@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 
 class WeaponSearchModel : public QAbstractListModel
 {
@@ -14,6 +15,7 @@ class WeaponSearchModel : public QAbstractListModel
     Q_PROPERTY(bool showLatestSeason READ showLatestSeason WRITE setShowLatestSeason NOTIFY showLatestSeasonChanged)
     Q_PROPERTY(bool autoShowLatestSeason READ autoShowLatestSeason WRITE setAutoShowLatestSeason NOTIFY autoShowLatestSeasonChanged)
     Q_PROPERTY(bool openInPWA READ openInPWA WRITE setOpenInPWA NOTIFY openInPWAChanged)
+    Q_PROPERTY(QStringList activeSourceFilters READ activeSourceFilters NOTIFY activeSourceFiltersChanged)
 
 public:
     enum WeaponRoles {
@@ -51,6 +53,8 @@ public:
     bool openInPWA() const { return m_openInPWA; }
     void setOpenInPWA(bool open);
 
+    QStringList activeSourceFilters() const { return m_activeSourceFilters; }
+
     void setWeapons(const QJsonArray &weapons);
 
     Q_INVOKABLE void openWeapon(int index);
@@ -61,6 +65,7 @@ signals:
     void showLatestSeasonChanged();
     void autoShowLatestSeasonChanged();
     void openInPWAChanged();
+    void activeSourceFiltersChanged();
     void weaponsLoaded();
 
 private:
@@ -83,6 +88,7 @@ private:
     bool m_showLatestSeason = false;
     bool m_autoShowLatestSeason = true;
     bool m_openInPWA = true;      // Open links in Chrome PWA mode (default: true)
+    QStringList m_activeSourceFilters;  // Currently active source filter display names
 };
 
 #endif // WEAPONSEARCHMODEL_H

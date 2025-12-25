@@ -161,8 +161,23 @@ void WeaponSearchModel::filterWeapons()
     bool holofoilOnly = false;    // -h flag or "holofoil"/"holo" keyword: show only holofoil weapons
     bool adeptOnly = false;       // -a flag or "adept" keyword: show only adept/harrowed/timelost weapons
     bool exoticOnly = false;      // -e flag or "exotic" keyword: show only exotic weapons
+    QStringList sourceFilters;    // -s flag: filter by source (e.g., -s gambit, -s vog)
     
     QString queryLower = m_searchQuery.toLower().trimmed();
+    
+    // Parse -s source filters first (e.g., "-s gambit", "-s vog", "-s trials")
+    // Can have multiple: "-s gambit -s trials"
+    QRegularExpression sourcePattern("-s\\s+(\\S+)", QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator sourceMatches = sourcePattern.globalMatch(queryLower);
+    while (sourceMatches.hasNext()) {
+        QRegularExpressionMatch match = sourceMatches.next();
+        QString sourceAlias = match.captured(1).toLower();
+        if (!sourceFilters.contains(sourceAlias)) {
+            sourceFilters.append(sourceAlias);
+        }
+    }
+    // Remove source patterns from query
+    queryLower = queryLower.remove(sourcePattern).trimmed();
     
     // Check for flags in various formats:
     // - Combined: -!*ha, -h!*, etc.
@@ -216,11 +231,64 @@ void WeaponSearchModel::filterWeapons()
         exoticOnly = true;
         queryLower = queryLower.replace(QRegularExpression("\\bexotic\\b"), "").trimmed();
     }
+    
+    // Build a map of source aliases to display names for active filters
+    // We need to scan weapons to find matching sourceDisplayNames
+    QStringList matchedSourceDisplayNames;
+    if (!sourceFilters.isEmpty()) {
+        std::set<QString> seenDisplayNames;
+        for (const QJsonValue &value : m_allWeapons) {
+            QJsonObject weapon = value.toObject();
+            QJsonArray aliases = weapon["sourceSearchAliases"].toArray();
+            QString displayName = weapon["sourceDisplayName"].toString();
+            
+            if (displayName.isEmpty()) continue;
+            
+            for (const QString &filterAlias : sourceFilters) {
+                // Check if any alias matches the filter
+                for (const QJsonValue &aliasVal : aliases) {
+                    QString alias = aliasVal.toString().toLower();
+                    if (alias == filterAlias || alias.contains(filterAlias) || filterAlias.contains(alias)) {
+                        if (seenDisplayNames.find(displayName) == seenDisplayNames.end()) {
+                            matchedSourceDisplayNames.append(displayName);
+                            seenDisplayNames.insert(displayName);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Update active source filters for QML
+    if (m_activeSourceFilters != matchedSourceDisplayNames) {
+        m_activeSourceFilters = matchedSourceDisplayNames;
+        emit activeSourceFiltersChanged();
+    }
+    
+    // Helper lambda to check if a weapon matches the source filters
+    auto matchesSourceFilter = [&sourceFilters](const QJsonObject &weapon) -> bool {
+        if (sourceFilters.isEmpty()) return true;
+        
+        QJsonArray aliases = weapon["sourceSearchAliases"].toArray();
+        for (const QString &filterAlias : sourceFilters) {
+            bool found = false;
+            for (const QJsonValue &aliasVal : aliases) {
+                QString alias = aliasVal.toString().toLower();
+                if (alias == filterAlias || alias.contains(filterAlias) || filterAlias.contains(alias)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return false; // All filters must match
+        }
+        return true;
+    };
 
     // If query is empty (after removing flags), show latest season weapons with filters applied
     // The -* flag allows showing ALL weapons (not just latest season)
     // Other flags (-!, -h, -a) are filters that apply to the current view (latest season by default)
-    bool showAllWeapons = noLimit; // Only -* flag shows all weapons
+    bool showAllWeapons = noLimit || !sourceFilters.isEmpty(); // -* flag or -s flag shows all weapons
     
     if (queryLower.isEmpty() && !showAllWeapons) {
         if (!m_showLatestSeason) {
@@ -352,14 +420,13 @@ void WeaponSearchModel::filterWeapons()
                 continue; // Skip non-adept weapons when adept filter is active
             }
             
-            // Apply uniqueByName filter - skip if we've already seen this base weapon name
-            // Prefer non-holofoil, non-adept versions (they typically come first)
-            if (uniqueByName) {
-                if (seenWeaponNames.find(baseName) != seenWeaponNames.end()) {
-                    continue; // Skip duplicate weapon base names
-                }
-                seenWeaponNames.insert(baseName);
+            // Apply source filter
+            if (!matchesSourceFilter(weapon)) {
+                continue; // Skip weapons that don't match source filter
             }
+            
+            // Note: uniqueByName filter is applied AFTER sorting to prefer newer season weapons
+            // See the result collection loop below
             
             QString name = weaponName.toLower();
             QString weaponType = weapon["weaponType"].toString().toLower();
@@ -505,13 +572,37 @@ void WeaponSearchModel::filterWeapons()
         // Determine result limit:
         // - noLimit flag (-*): no limit
         // - isSeasonSearch (s27, Season 27): no limit  
+        // - sourceFilters active (-s gambit): no limit
         // - holofoilOnly, uniqueByName, adeptOnly, or exoticOnly with no other search: no limit
         // - Otherwise: limit to 50
         m_filteredWeapons = QJsonArray();
-        bool shouldRemoveLimit = noLimit || isSeasonSearch || ((holofoilOnly || uniqueByName || adeptOnly || exoticOnly) && searchTerms.isEmpty());
+        bool shouldRemoveLimit = noLimit || isSeasonSearch || !sourceFilters.isEmpty() || ((holofoilOnly || uniqueByName || adeptOnly || exoticOnly) && searchTerms.isEmpty());
         int maxResults = shouldRemoveLimit ? scoredWeapons.size() : qMin(50, static_cast<int>(scoredWeapons.size()));
-        for (int i = 0; i < maxResults; ++i) {
-            m_filteredWeapons.append(std::get<3>(scoredWeapons[i]));
+        
+        // Apply uniqueByName filter AFTER sorting - this ensures newer season weapons are preferred
+        // Since weapons are now sorted by score (which includes season bonus) and then by season,
+        // the first occurrence of each base name will be from the newest season
+        std::set<QString> seenUniqueNames;
+        
+        for (int i = 0; i < scoredWeapons.size(); ++i) {
+            if (!uniqueByName && static_cast<int>(m_filteredWeapons.size()) >= maxResults) {
+                break;
+            }
+            
+            QJsonObject weapon = std::get<3>(scoredWeapons[i]);
+            
+            if (uniqueByName) {
+                QString weaponName = weapon["name"].toString();
+                QString baseName = getBaseWeaponName(weaponName);
+                
+                // Skip if we've already seen this base weapon name
+                if (seenUniqueNames.find(baseName) != seenUniqueNames.end()) {
+                    continue;
+                }
+                seenUniqueNames.insert(baseName);
+            }
+            
+            m_filteredWeapons.append(weapon);
         }
     }
 

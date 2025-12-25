@@ -64,6 +64,7 @@ Rectangle {
     property int maxVisibleItems: 5
     property int noResultsHeight: 60
     property int noResultsBottomMargin: 16
+    property int sourceFilterBarHeight: 52  // 36 height + 16 spacing
     
     property int calculatedHeight: {
         // Loading state - minimal height
@@ -71,19 +72,22 @@ Rectangle {
             return fixedHeight + noResultsHeight
         }
         
+        // Add source filter bar height if visible
+        var sourceBarExtra = searchModel.activeSourceFilters.length > 0 ? sourceFilterBarHeight : 0
+        
         var itemCount = resultsList.count
         if (itemCount === 0) {
             if (searchInput.text.length > 0) {
                 // No results for search query - show message
-                return fixedHeight + noResultsHeight + noResultsBottomMargin
+                return fixedHeight + sourceBarExtra + noResultsHeight + noResultsBottomMargin
             } else {
                 // Empty state - just fixed height (no message)
-                return fixedHeight
+                return fixedHeight + sourceBarExtra
             }
         } else {
             var visibleItems = Math.min(itemCount, maxVisibleItems)
             var listHeight = visibleItems * itemHeight + (visibleItems - 1) * itemSpacing
-            return fixedHeight + listHeight
+            return fixedHeight + sourceBarExtra + listHeight
         }
     }
 
@@ -555,6 +559,94 @@ Rectangle {
                 onPressed: function(mouse) {
                     // Allow TextInput to receive the click for text selection
                     mouse.accepted = false
+                }
+            }
+        }
+
+        // Source filter info bar - shows when filtering by source
+        Rectangle {
+            id: sourceFilterBar
+            Layout.fillWidth: true
+            Layout.preferredHeight: 36
+            visible: searchModel.activeSourceFilters.length > 0
+            color: "#B31a2a2a"  // Semi-transparent background (70% opacity)
+            radius: 8
+            clip: true
+            
+            Row {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 8
+                
+                Text {
+                    id: sourcesLabel
+                    text: searchModel.activeSourceFilters.length === 1 ? "SOURCE:" : "SOURCES:"
+                    font.family: searchWindow.mainFont
+                    font.pixelSize: 12
+                    font.weight: Font.Bold
+                    color: "#ffffff"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                
+                Text {
+                    id: sourceText
+                    // Dynamically calculate how many sources fit
+                    property int sourcesToShow: {
+                        var sources = searchModel.activeSourceFilters
+                        var count = sources.length
+                        if (count === 0) return 0
+                        
+                        // Available width for source text
+                        var moreWidth = count > 1 ? 70 : 0  // Space for "+X more" text
+                        var availableWidth = sourceFilterBar.width - sourcesLabel.width - moreWidth - 50
+                        
+                        // Try to fit as many sources as possible
+                        var shown = 0
+                        var currentWidth = 0
+                        var avgCharWidth = 7.5  // Approximate character width
+                        
+                        for (var i = 0; i < count; i++) {
+                            var sourceWidth = sources[i].length * avgCharWidth
+                            var separatorWidth = (i > 0) ? 16 : 0  // ", " width
+                            
+                            if (currentWidth + sourceWidth + separatorWidth <= availableWidth) {
+                                currentWidth += sourceWidth + separatorWidth
+                                shown++
+                            } else {
+                                break
+                            }
+                        }
+                        
+                        return Math.max(1, shown)  // Show at least 1
+                    }
+                    text: {
+                        var sources = searchModel.activeSourceFilters
+                        var toShow = sources.slice(0, sourcesToShow)
+                        return toShow.join(", ")
+                    }
+                    font.family: searchWindow.mainFont
+                    font.pixelSize: 12
+                    font.weight: Font.Medium
+                    color: "#09d7d0"
+                    anchors.verticalCenter: parent.verticalCenter
+                    elide: Text.ElideRight
+                    width: Math.min(implicitWidth, sourceFilterBar.width - sourcesLabel.width - (moreText.visible ? moreText.width + 16 : 0) - 40)
+                }
+                
+                // Show count if more sources are hidden
+                Text {
+                    id: moreText
+                    visible: searchModel.activeSourceFilters.length > sourceText.sourcesToShow
+                    text: "+" + (searchModel.activeSourceFilters.length - sourceText.sourcesToShow) + " more"
+                    font.family: searchWindow.mainFont
+                    font.pixelSize: 11
+                    font.weight: Font.Medium
+                    color: "#09d7d0"
+                    opacity: 0.7
+                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
         }
