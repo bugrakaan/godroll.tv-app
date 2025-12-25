@@ -234,26 +234,56 @@ void WeaponSearchModel::filterWeapons()
     
     // Build a map of source aliases to display names for active filters
     // We need to scan weapons to find matching sourceDisplayNames
+    // Priority: exact match > starts-with match > contains match
     QStringList matchedSourceDisplayNames;
     if (!sourceFilters.isEmpty()) {
-        std::set<QString> seenDisplayNames;
-        for (const QJsonValue &value : m_allWeapons) {
-            QJsonObject weapon = value.toObject();
-            QJsonArray aliases = weapon["sourceSearchAliases"].toArray();
-            QString displayName = weapon["sourceDisplayName"].toString();
+        // For each filter, find the best matching source(s)
+        // Exact match = only that source, starts-with/contains = all matching sources
+        for (const QString &filterAlias : sourceFilters) {
+            std::set<QString> exactMatches;
+            std::set<QString> startsWithMatches;
+            std::set<QString> containsMatches;
             
-            if (displayName.isEmpty()) continue;
-            
-            for (const QString &filterAlias : sourceFilters) {
-                // Check if any alias matches the filter
+            for (const QJsonValue &value : m_allWeapons) {
+                QJsonObject weapon = value.toObject();
+                QJsonArray aliases = weapon["sourceSearchAliases"].toArray();
+                QString displayName = weapon["sourceDisplayName"].toString();
+                
+                if (displayName.isEmpty()) continue;
+                
                 for (const QJsonValue &aliasVal : aliases) {
                     QString alias = aliasVal.toString().toLower();
-                    if (alias == filterAlias || alias.contains(filterAlias) || filterAlias.contains(alias)) {
-                        if (seenDisplayNames.find(displayName) == seenDisplayNames.end()) {
-                            matchedSourceDisplayNames.append(displayName);
-                            seenDisplayNames.insert(displayName);
-                        }
+                    
+                    // Check for exact match first (highest priority)
+                    if (alias == filterAlias) {
+                        exactMatches.insert(displayName);
                         break;
+                    }
+                    // Check for starts-with match (medium priority)
+                    else if (alias.startsWith(filterAlias)) {
+                        startsWithMatches.insert(displayName);
+                    }
+                    // Check for contains match (lowest priority)
+                    else if (alias.contains(filterAlias) || filterAlias.contains(alias)) {
+                        containsMatches.insert(displayName);
+                    }
+                }
+            }
+            
+            // Use matches in priority order: exact > starts-with > contains
+            std::set<QString>* bestMatches = nullptr;
+            if (!exactMatches.empty()) {
+                bestMatches = &exactMatches;
+            } else if (!startsWithMatches.empty()) {
+                bestMatches = &startsWithMatches;
+            } else if (!containsMatches.empty()) {
+                bestMatches = &containsMatches;
+            }
+            
+            if (bestMatches) {
+                for (const QString &displayName : *bestMatches) {
+                    if (!matchedSourceDisplayNames.contains(displayName)) {
+                        matchedSourceDisplayNames.append(displayName);
                     }
                 }
             }
@@ -267,9 +297,17 @@ void WeaponSearchModel::filterWeapons()
     }
     
     // Helper lambda to check if a weapon matches the source filters
-    auto matchesSourceFilter = [&sourceFilters](const QJsonObject &weapon) -> bool {
+    // Uses the same priority logic: exact > starts-with > contains
+    auto matchesSourceFilter = [&sourceFilters, &matchedSourceDisplayNames](const QJsonObject &weapon) -> bool {
         if (sourceFilters.isEmpty()) return true;
         
+        // If we found specific sources, only match those
+        QString weaponSource = weapon["sourceDisplayName"].toString();
+        if (!matchedSourceDisplayNames.isEmpty()) {
+            return matchedSourceDisplayNames.contains(weaponSource);
+        }
+        
+        // Fallback to alias matching
         QJsonArray aliases = weapon["sourceSearchAliases"].toArray();
         for (const QString &filterAlias : sourceFilters) {
             bool found = false;
@@ -287,8 +325,10 @@ void WeaponSearchModel::filterWeapons()
 
     // If query is empty (after removing flags), show latest season weapons with filters applied
     // The -* flag allows showing ALL weapons (not just latest season)
-    // Other flags (-!, -h, -a) are filters that apply to the current view (latest season by default)
-    bool showAllWeapons = noLimit || !sourceFilters.isEmpty(); // -* flag or -s flag shows all weapons
+    // Filter flags (-h, -a, -e) when used alone should search ALL weapons
+    // -! (unique) alone still shows latest season only
+    bool hasFilterFlags = holofoilOnly || adeptOnly || exoticOnly;
+    bool showAllWeapons = noLimit || !sourceFilters.isEmpty() || hasFilterFlags; // -* flag, -s flag, or filter flags shows all weapons
     
     if (queryLower.isEmpty() && !showAllWeapons) {
         if (!m_showLatestSeason) {
@@ -325,29 +365,36 @@ void WeaponSearchModel::filterWeapons()
                     }
                     
                     // If uniqueByName is enabled, skip if we've seen this base name
-                    // Prefer non-holofoil, non-adept versions
+                    // When holofoilOnly is active, we keep holofoil versions
+                    // When not holofoilOnly, prefer non-holofoil, non-adept versions
                     if (uniqueByName) {
                         // Use base name (without Adept/Harrowed/Timelost suffix) for comparison
                         std::string nameKey = getBaseWeaponName(name).toStdString();
                         if (seenWeaponNames.count(nameKey) > 0) {
                             continue;
                         }
-                        // If this is holofoil or adept, check if a base version exists
-                        if (isHolofoil || isAdept) {
-                            bool hasBaseVersion = false;
-                            for (const QJsonValue &other : m_allWeapons) {
-                                QJsonObject otherWeapon = other.toObject();
-                                QString otherName = otherWeapon["name"].toString();
-                                if (otherWeapon["seasonNumber"].toInt() == m_latestSeason &&
-                                    getBaseWeaponName(otherName) == getBaseWeaponName(name) &&
-                                    !otherWeapon["isHolofoil"].toBool() &&
-                                    !isAdeptWeapon(otherWeapon)) {
-                                    hasBaseVersion = true;
-                                    break;
+                        
+                        // If holofoilOnly is active, we're already filtering to holofoil only
+                        // So just add this weapon (first holofoil with this base name)
+                        // Same for adeptOnly - just add the first matching weapon
+                        if (!holofoilOnly && !adeptOnly) {
+                            // If this is holofoil or adept, check if a base version exists
+                            if (isHolofoil || isAdept) {
+                                bool hasBaseVersion = false;
+                                for (const QJsonValue &other : m_allWeapons) {
+                                    QJsonObject otherWeapon = other.toObject();
+                                    QString otherName = otherWeapon["name"].toString();
+                                    if (otherWeapon["seasonNumber"].toInt() == m_latestSeason &&
+                                        getBaseWeaponName(otherName) == getBaseWeaponName(name) &&
+                                        !otherWeapon["isHolofoil"].toBool() &&
+                                        !isAdeptWeapon(otherWeapon)) {
+                                        hasBaseVersion = true;
+                                        break;
+                                    }
                                 }
-                            }
-                            if (hasBaseVersion) {
-                                continue; // Skip variant, we'll add base version
+                                if (hasBaseVersion) {
+                                    continue; // Skip variant, we'll add base version
+                                }
                             }
                         }
                         seenWeaponNames.insert(nameKey);

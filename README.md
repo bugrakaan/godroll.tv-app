@@ -20,6 +20,7 @@ A desktop launcher for quick Destiny 2 weapon search on [Godroll.tv](https://god
 - **`-*`** - Remove 50-result limit, show all matches
 - **`-a`** - Show only Adept/Harrowed/Timelost weapons (or use "adept" keyword)
 - **`-e`** - Show only Exotic weapons (or use "exotic" keyword)
+- **`-s <source>`** - Filter by source (raid, dungeon, activity, etc.)
 - **Combined** - Use together like `-!*h` or `-h -! -*`
 
 ### Keyboard Shortcuts
@@ -96,10 +97,22 @@ revenant              → Season of the Revenant weapons
 -h pulse              → Holofoil Pulse Rifles
 -! s28                → Unique weapons from Season 28
 -* pulse              → All Pulse Rifles (no limit)
--a                    → Adept only
--e                    → Exotic weapons only
+-a                    → All Adept/Harrowed/Timelost weapons
+-e                    → All Exotic weapons
 -!*h                  → All unique holofoil weapons
 exotic hand cannon    → Exotic Hand Cannons
+```
+
+**Source Filter**
+```
+-s se                 → Salvation's Edge weapons
+-s vog                → Vault of Glass weapons
+-s gambit             → Gambit weapons
+-s trials             → Trials of Osiris weapons
+-s nightfall          → Nightfall weapons
+-s iron               → Iron Banner weapons
+-s duality            → Duality dungeon weapons
+-s crotas             → Crota's End weapons
 ```
 
 ### System Tray
