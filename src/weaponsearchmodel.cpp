@@ -742,16 +742,22 @@ double WeaponSearchModel::fuseFuzzyMatch(const QString &text, const QString &pat
     if (normalizedText.startsWith(normalizedPattern)) {
         // Longer pattern relative to text = higher score
         double lengthRatio = static_cast<double>(normalizedPattern.length()) / normalizedText.length();
-        return 0.95 + (lengthRatio * 0.04);  // Range: 0.95 - 0.99
+        return 0.96 + (lengthRatio * 0.03);  // Range: 0.96 - 0.99
     }
     
-    // Check if any WORD starts with pattern - very high priority
+    // Check if any WORD starts with pattern
     QStringList words = normalizedText.split(' ', Qt::SkipEmptyParts);
     for (int i = 0; i < words.size(); ++i) {
         if (words[i].startsWith(normalizedPattern)) {
-            // First word match is higher than later word matches
-            double wordPositionBonus = 1.0 - (static_cast<double>(i) / words.size() * 0.05);
-            return 0.88 + (wordPositionBonus * 0.06);  // Range: 0.88 - 0.94
+            if (i == 0) {
+                // First word starts with pattern - high priority but below full name match
+                double lengthRatio = static_cast<double>(normalizedPattern.length()) / words[i].length();
+                return 0.92 + (lengthRatio * 0.03);  // Range: 0.92 - 0.95
+            } else {
+                // Later word starts with pattern - much lower priority
+                double wordPositionPenalty = static_cast<double>(i) / words.size() * 0.05;
+                return 0.65 - wordPositionPenalty;  // Range: 0.60 - 0.65
+            }
         }
     }
     
@@ -762,7 +768,7 @@ double WeaponSearchModel::fuseFuzzyMatch(const QString &text, const QString &pat
         double positionBonus = 1.0 - (static_cast<double>(containsIndex) / normalizedText.length() * 0.1);
         // Longer pattern relative to text = higher score
         double lengthRatio = static_cast<double>(normalizedPattern.length()) / normalizedText.length();
-        return 0.75 + (positionBonus * 0.08) + (lengthRatio * 0.04);  // Range: 0.75 - 0.87
+        return 0.50 + (positionBonus * 0.08) + (lengthRatio * 0.04);  // Range: 0.50 - 0.62
     }
     
     // Prefix match on any word with typo tolerance
