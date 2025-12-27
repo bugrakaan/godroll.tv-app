@@ -43,9 +43,14 @@ set(HEADERS
     src/updatechecker.h
 )
 
-# Windows icon resource
+# Windows icon and version resource
 if(WIN32)
-    set(APP_ICON_RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/resources/app.rc")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/app.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/app.rc"
+        @ONLY
+    )
+    set(APP_ICON_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/app.rc")
 endif()
 
 qt_add_executable(GodrollLauncher
