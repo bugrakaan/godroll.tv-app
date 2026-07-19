@@ -1016,6 +1016,8 @@ void WeaponSearchModel::filterWeapons()
             // For each term, check if it matches any field
             bool allTermsMatch = true;
             int totalScore = 0;
+            int nameMatchCount = 0;
+            int fullNameScore = fuzzyScore(name, queryLower);
             QStringList matchedFields;
             
             for (const QString &term : searchTerms) {
@@ -1106,6 +1108,9 @@ void WeaponSearchModel::filterWeapons()
                 }
                 
                 totalScore += termScore;
+                if (termMatchedField == "name") {
+                    nameMatchCount++;
+                }
                 if (!termMatchedField.isEmpty() && termMatchedField != "name" && !matchedFields.contains(termMatchedField)) {
                     matchedFields.append(termMatchedField);
                 }
@@ -1114,15 +1119,32 @@ void WeaponSearchModel::filterWeapons()
             if (allTermsMatch && totalScore > 0) {
                 // Store matched fields as comma-separated string
                 weapon["matchedField"] = matchedFields.join(",");
+                weapon["_nameMatchCount"] = nameMatchCount;
+                weapon["_fullNameScore"] = fullNameScore;
                 
                 scoredWeapons.append({totalScore, seasonNum, name, weapon});
             }
         }
 
-        // Always sort search results by newest season first, then alphabetically.
-        // Score remains a final tie-breaker for otherwise identical entries.
+        // Name relevance always wins. Within the same name-match tier, keep the
+        // established newest-season-first, then alphabetical ordering.
         std::sort(scoredWeapons.begin(), scoredWeapons.end(),
                   [](const auto &a, const auto &b) {
+                      const QJsonObject &weaponA = std::get<3>(a);
+                      const QJsonObject &weaponB = std::get<3>(b);
+
+                      int nameMatchesA = weaponA["_nameMatchCount"].toInt();
+                      int nameMatchesB = weaponB["_nameMatchCount"].toInt();
+                      if (nameMatchesA != nameMatchesB) {
+                          return nameMatchesA > nameMatchesB;
+                      }
+
+                      int fullNameScoreA = weaponA["_fullNameScore"].toInt();
+                      int fullNameScoreB = weaponB["_fullNameScore"].toInt();
+                      if (fullNameScoreA != fullNameScoreB) {
+                          return fullNameScoreA > fullNameScoreB;
+                      }
+
                       int seasonA = std::get<1>(a);
                       int seasonB = std::get<1>(b);
                       if (seasonA != seasonB) {
