@@ -1126,8 +1126,9 @@ void WeaponSearchModel::filterWeapons()
             }
         }
 
-        // Name relevance always wins. Within the same name-match tier, keep the
-        // established newest-season-first, then alphabetical ordering.
+        // An exact full-name match wins even across seasons. Otherwise,
+        // name-field matches win over other fields and newer seasons come
+        // before fine-grained fuzzy relevance.
         std::sort(scoredWeapons.begin(), scoredWeapons.end(),
                   [](const auto &a, const auto &b) {
                       const QJsonObject &weaponA = std::get<3>(a);
@@ -1135,20 +1136,27 @@ void WeaponSearchModel::filterWeapons()
 
                       int nameMatchesA = weaponA["_nameMatchCount"].toInt();
                       int nameMatchesB = weaponB["_nameMatchCount"].toInt();
-                      if (nameMatchesA != nameMatchesB) {
-                          return nameMatchesA > nameMatchesB;
-                      }
 
                       int fullNameScoreA = weaponA["_fullNameScore"].toInt();
                       int fullNameScoreB = weaponB["_fullNameScore"].toInt();
-                      if (fullNameScoreA != fullNameScoreB) {
-                          return fullNameScoreA > fullNameScoreB;
+                      bool exactNameA = (fullNameScoreA == 1000);
+                      bool exactNameB = (fullNameScoreB == 1000);
+                      if (exactNameA != exactNameB) {
+                          return exactNameA;
+                      }
+
+                      if (nameMatchesA != nameMatchesB) {
+                          return nameMatchesA > nameMatchesB;
                       }
 
                       int seasonA = std::get<1>(a);
                       int seasonB = std::get<1>(b);
                       if (seasonA != seasonB) {
                           return seasonA > seasonB;
+                      }
+
+                      if (fullNameScoreA != fullNameScoreB) {
+                          return fullNameScoreA > fullNameScoreB;
                       }
 
                       QString nameA = std::get<2>(a).toLower();
