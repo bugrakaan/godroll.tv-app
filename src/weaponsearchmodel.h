@@ -36,6 +36,7 @@ public:
         AmmoTypeRole,
         AmmoTypeIconRole,
         IconWatermarkRole,
+        IsTier3WeaponRole,
         IsTier5WeaponRole,
         TierTypeNameRole
     };

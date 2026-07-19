@@ -14,10 +14,11 @@ A desktop launcher for quick Destiny 2 weapon search on [Godroll.tv](https://god
 ## Features
 
 ### Search
-- Search by weapon name, weapon type, frame type, season, damage type, or ammo type
+- Search by weapon name, weapon type, frame type, season, damage type, ammo type, equipment slot, or RPM
 - Multi-term queries - Type "pulse high-impact void" to find High-Impact Void Pulse Rifles
 - Fuzzy matching - Handles typos and partial matches
 - Season search - Type "s28", "Season 28", or "Revenant" to filter by season
+- Exact ID search - ID mode activates only when the complete numeric query exactly matches a weapon hash; partial hashes are ignored
 
 ### Advanced Filters
 - **`-h`** - Show only holofoil weapons (or use "holofoil"/"holo" keyword)
@@ -25,11 +26,14 @@ A desktop launcher for quick Destiny 2 weapon search on [Godroll.tv](https://god
 - **`-*`** - Remove 50-result limit, show all matches
 - **`-a`** - Show only Adept/Harrowed/Timelost weapons (or use "adept" keyword)
 - **`-e`** - Show only Exotic weapons (or use "exotic" keyword)
+- **`-c`** - Show only craftable weapons
 - **`-s <source>`** - Filter by source (raid, dungeon, activity, etc.)
-- **`-t <perk>`** - Filter by perk/trait (e.g., `-t firefly`, `-t kc` for Kill Clip)
+- **`-t <perk>`** - Filter by perk or origin trait (e.g., `-t firefly`, `-t kc` for Kill Clip)
 - **Damage Types** - Use `solar`, `arc`, `void`, `stasis`, `strand`, `kinetic` keywords
 - **Ammo Types** - Use `primary`, `special`, `heavy` keywords
-- **Combined** - Use together like `-!*h` or `-h -! -*`
+- **Equipment Slots** - Use `kinetic`, `energy`, or `power`; `kinetic` matches Kinetic damage or the Kinetic slot
+- **RPM** - Use an exact 2-4 digit value such as `90`, `140`, or `900`; numeric weapon names remain searchable
+- **Combined** - Use together like `primary 140 solar hc -c`
 
 ### Perk Aliases
 Common community shorthand is supported for trait search:
@@ -51,6 +55,8 @@ Common community shorthand is supported for trait search:
 - Animated holofoil badge for holofoil weapons
 - Season information with expansion names
 - Active filter badges (source filters, trait filters)
+- Red craftable filter badge for `-c`
+- Tier 3 weapons use a gold border; Tier 5 weapons use the gold border plus five diamonds
 - System tray integration
 - Auto-start with Windows option
 
@@ -106,6 +112,15 @@ hand cannon solar     → Solar Hand Cannons
 s28                   → Season 28 weapons
 season 28             → Season 28 weapons
 revenant              → Season of the Revenant weapons
+```
+
+**Ammo, Equipment Slot, RPM & Exact ID Search**
+```
+primary 140 solar hc -c  -> Craftable 140 RPM Solar Hand Cannons using Primary ammo
+energy 140 hc            -> 140 RPM Hand Cannons in the Energy slot
+900 heavy                -> 900 RPM Heavy-ammo weapons
+1769847435               -> Exact weapon hash match only
+1769847                  -> Never treated as a partial hash match
 ```
 
 **Advanced Filters**

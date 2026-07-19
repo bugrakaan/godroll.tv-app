@@ -131,10 +131,14 @@ jobs:
           ## Godroll Launcher v${{ steps.new_version.outputs.NEW_VERSION }}
           
           ### Search Features
-          - **Flag modifiers**: `-!` (unique), `-*` (all), `-h` (holofoil), `-a` (adept), `-e` (exotic)
+          - **Flag modifiers**: `-!` (unique), `-*` (all), `-h` (holofoil), `-a` (adept), `-e` (exotic), `-c` (craftable)
           - **Source filter**: `-s <source>` to filter by raid/dungeon/activity (e.g., `-s se` for Salvation's Edge)
+          - **Trait filter**: `-t <trait>` searches both perks and origin traits
+          - **Ammo and slot search**: Search by ammo type (`primary`, `special`, `heavy`) and equipment slot (`kinetic`, `energy`, `power`)
+          - **RPM search**: Exact 2-4 digit RPM values combine with other terms without blocking numeric weapon-name matches
+          - **Combined query example**: `primary 140 solar hc -c`
           - **Exact source matching**: Exact source matches take priority over partial matches
-          - **Filter flags search all**: Using `-h`, `-a`, or `-e` alone searches all weapons
+          - **Filter flags search all**: Using `-h`, `-a`, `-e`, or `-c` alone searches all weapons
           - **Fuzzy search**: Typo-tolerant multi-term search with prefix priority
           - **Prefix ranking**: Weapons starting with search term ranked higher
           

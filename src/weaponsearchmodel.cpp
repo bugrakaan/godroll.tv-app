@@ -66,6 +66,8 @@ QVariant WeaponSearchModel::data(const QModelIndex &index, int role) const
         return weapon["ammoTypeIcon"].toString();
     case IconWatermarkRole:
         return weapon["iconWatermark"].toString();
+    case IsTier3WeaponRole:
+        return weapon["isTier3Weapon"].toBool();
     case IsTier5WeaponRole:
         return weapon["isTier5Weapon"].toBool();
     case TierTypeNameRole:
@@ -93,6 +95,7 @@ QHash<int, QByteArray> WeaponSearchModel::roleNames() const
     roles[AmmoTypeRole] = "ammoType";
     roles[AmmoTypeIconRole] = "ammoTypeIcon";
     roles[IconWatermarkRole] = "iconWatermark";
+    roles[IsTier3WeaponRole] = "isTier3Weapon";
     roles[IsTier5WeaponRole] = "isTier5Weapon";
     roles[TierTypeNameRole] = "tierTypeName";
     return roles;
@@ -152,6 +155,15 @@ void WeaponSearchModel::buildTraitList()
                 if (!perkName.isEmpty()) {
                     uniqueTraits.insert(perkName);
                 }
+            }
+        }
+
+        // Origin traits are searchable through -t even when the backend does
+        // not mirror them into perkColumns.
+        for (const QJsonValue &originVal : weapon["originTraits"].toArray()) {
+            QString originName = originVal.toString().trimmed();
+            if (!originName.isEmpty()) {
+                uniqueTraits.insert(originName);
             }
         }
     }
@@ -290,6 +302,7 @@ void WeaponSearchModel::filterWeapons()
     bool holofoilOnly = false;    // -h flag or "holofoil"/"holo" keyword: show only holofoil weapons
     bool adeptOnly = false;       // -a flag or "adept" keyword: show only adept/harrowed/timelost weapons
     bool exoticOnly = false;      // -e flag or "exotic" keyword: show only exotic weapons
+    bool craftableOnly = false;   // -c flag: show only craftable weapons
     QStringList sourceFilters;    // -s flag: filter by source (e.g., -s gambit, -s vog)
     QList<QPair<QString, int>> traitFilters;  // -t flag: filter by traits with column index
     QString damageTypeFilter;     // Damage type filter: solar, arc, void, stasis, strand, kinetic
@@ -409,9 +422,9 @@ void WeaponSearchModel::filterWeapons()
                     break;
                 }
                 
-                // Check for standard flags (!*hae)
+                // Check for standard flags (!*haec)
                 for (const QChar &c : flagChars) {
-                    if (c != '!' && c != '*' && c != 'h' && c != 'a' && c != 'e') {
+                    if (c != '!' && c != '*' && c != 'h' && c != 'a' && c != 'e' && c != 'c') {
                         isFlag = false;
                         break;
                     }
@@ -484,7 +497,7 @@ void WeaponSearchModel::filterWeapons()
     // - Combined: -!*ha, -h!*, etc.
     // - Separate: -h -* -!, -h-*-!, etc.
     // Pattern matches any -X where X contains !, *, h, a, or e
-    QRegularExpression flagPattern("-([!*hae]+)");
+    QRegularExpression flagPattern("-([!*haec]+)");
     QRegularExpressionMatchIterator flagMatches = flagPattern.globalMatch(queryLower);
     
     while (flagMatches.hasNext()) {
@@ -504,6 +517,9 @@ void WeaponSearchModel::filterWeapons()
         }
         if (flags.contains('e')) {
             exoticOnly = true;
+        }
+        if (flags.contains('c')) {
+            craftableOnly = true;
         }
     }
     
@@ -552,6 +568,19 @@ void WeaponSearchModel::filterWeapons()
             ammoTypeFilter = it.value();
             queryLower = queryLower.remove(pattern).simplified();
             break;  // Only one ammo type filter at a time
+        }
+    }
+
+    // Equipment slot keywords. "kinetic" is ambiguous with the damage type,
+    // so it is accepted as either Kinetic damage or Kinetic slot below.
+    QString equipmentSlotFilter;
+    bool kineticDamageOrSlot = (damageTypeFilter.compare("Kinetic", Qt::CaseInsensitive) == 0);
+    for (const QString &slot : {QString("energy"), QString("power")}) {
+        QRegularExpression pattern("\\b" + slot + "\\b", QRegularExpression::CaseInsensitiveOption);
+        if (queryLower.contains(pattern)) {
+            equipmentSlotFilter = slot;
+            queryLower = queryLower.remove(pattern).simplified();
+            break;
         }
     }
     
@@ -692,6 +721,15 @@ void WeaponSearchModel::filterWeapons()
                 
                 if (found) break;
             }
+
+            if (!found) {
+                for (const QJsonValue &originVal : weapon["originTraits"].toArray()) {
+                    if (originVal.toString().toLower() == traitName) {
+                        found = true;
+                        break;
+                    }
+                }
+            }
             
             if (!found) return false;  // Trait not found in any available column
         }
@@ -703,8 +741,8 @@ void WeaponSearchModel::filterWeapons()
     // The -* flag allows showing ALL weapons (not just latest season)
     // Filter flags (-h, -a, -e) when used alone should search ALL weapons
     // -! (unique) alone still shows latest season only
-    bool hasFilterFlags = holofoilOnly || adeptOnly || exoticOnly;
-    bool hasDamageOrAmmoFilter = !damageTypeFilter.isEmpty() || !ammoTypeFilter.isEmpty();
+    bool hasFilterFlags = holofoilOnly || adeptOnly || exoticOnly || craftableOnly;
+    bool hasDamageOrAmmoFilter = !damageTypeFilter.isEmpty() || !ammoTypeFilter.isEmpty() || !equipmentSlotFilter.isEmpty();
     bool showAllWeapons = noLimit || !sourceFilters.isEmpty() || !traitFilters.isEmpty() || hasFilterFlags || hasDamageOrAmmoFilter; // -* flag, -s flag, -t flag, damage/ammo type, or filter flags shows all weapons
     
     if (queryLower.isEmpty() && !showAllWeapons) {
@@ -740,13 +778,25 @@ void WeaponSearchModel::filterWeapons()
                     if (adeptOnly && !isAdept) {
                         continue; // Skip non-adept weapons when adept filter is active
                     }
+
+                    if (craftableOnly && !weapon["isCraftable"].toBool()) {
+                        continue;
+                    }
                     
                     // Apply damage type filter
                     if (!damageTypeFilter.isEmpty()) {
                         QString weaponDamage = weapon["damageType"].toString();
-                        if (weaponDamage.toLower() != damageTypeFilter.toLower()) {
+                        QString weaponSlot = weapon["equipmentSlot"].toString();
+                        bool matchesDamage = weaponDamage.compare(damageTypeFilter, Qt::CaseInsensitive) == 0;
+                        bool matchesKineticSlot = kineticDamageOrSlot && weaponSlot.compare("Kinetic", Qt::CaseInsensitive) == 0;
+                        if (!matchesDamage && !matchesKineticSlot) {
                             continue;
                         }
+                    }
+
+                    if (!equipmentSlotFilter.isEmpty() &&
+                        weapon["equipmentSlot"].toString().compare(equipmentSlotFilter, Qt::CaseInsensitive) != 0) {
+                        continue;
                     }
                     
                     // Apply ammo type filter
@@ -834,15 +884,26 @@ void WeaponSearchModel::filterWeapons()
         // Split query into terms for normal search
         QStringList searchTerms = queryLower.split(' ', Qt::SkipEmptyParts);
         
-        // Check if query is a pure hash/ID search (e.g., "3267997292")
+        // Enable ID search only when the complete numeric query exactly equals
+        // a hash in the current dataset. Otherwise it remains a normal name/RPM
+        // term; partial hashes are never considered matches.
         bool isIdSearch = false;
         quint64 searchedHash = 0;
         {
             bool ok = false;
             quint64 hashVal = queryLower.trimmed().toULongLong(&ok);
             if (ok && !queryLower.trimmed().isEmpty()) {
-                isIdSearch = true;
-                searchedHash = hashVal;
+                for (const QJsonValue &value : m_allWeapons) {
+                    QJsonValue hashValue = value.toObject()["hash"];
+                    quint64 weaponHash = hashValue.isDouble()
+                        ? static_cast<quint64>(hashValue.toDouble())
+                        : hashValue.toString().toULongLong();
+                    if (weaponHash == hashVal) {
+                        isIdSearch = true;
+                        searchedHash = hashVal;
+                        break;
+                    }
+                }
             }
         }
         
@@ -871,13 +932,25 @@ void WeaponSearchModel::filterWeapons()
             if (adeptOnly && !isAdept) {
                 continue; // Skip non-adept weapons when adept filter is active
             }
+
+            if (craftableOnly && !weapon["isCraftable"].toBool()) {
+                continue;
+            }
             
             // Apply damage type filter
             if (!damageTypeFilter.isEmpty()) {
                 QString weaponDamage = weapon["damageType"].toString();
-                if (weaponDamage.toLower() != damageTypeFilter.toLower()) {
+                QString weaponSlot = weapon["equipmentSlot"].toString();
+                bool matchesDamage = weaponDamage.compare(damageTypeFilter, Qt::CaseInsensitive) == 0;
+                bool matchesKineticSlot = kineticDamageOrSlot && weaponSlot.compare("Kinetic", Qt::CaseInsensitive) == 0;
+                if (!matchesDamage && !matchesKineticSlot) {
                     continue;
                 }
+            }
+
+            if (!equipmentSlotFilter.isEmpty() &&
+                weapon["equipmentSlot"].toString().compare(equipmentSlotFilter, Qt::CaseInsensitive) != 0) {
+                continue;
             }
             
             // Apply ammo type filter
@@ -904,6 +977,7 @@ void WeaponSearchModel::filterWeapons()
             QString name = weaponName.toLower();
             QString weaponType = weapon["weaponType"].toString().toLower();
             QString frameType = weapon["frameType"].toString().toLower();
+            QString equipmentSlot = weapon["equipmentSlot"].toString().toLower();
             QString seasonName = weapon["seasonName"].toString().toLower();
             QString season = weapon["season"].toString().toLower(); // "Season X" format
             QString seasonDisplay = weapon["seasonDisplay"].toString().toLower(); // Full display name
@@ -1001,6 +1075,23 @@ void WeaponSearchModel::filterWeapons()
                     termScore = static_cast<int>(frameTypeScore * 0.97);
                     termMatchedField = "frameType";
                 }
+
+                // Check equipment slot (Kinetic, Energy, Power).
+                int equipmentSlotScore = fuzzyScore(equipmentSlot, term);
+                if (equipmentSlotScore > 0 && static_cast<int>(equipmentSlotScore * 0.8) > termScore) {
+                    termScore = static_cast<int>(equipmentSlotScore * 0.8);
+                    termMatchedField = "equipmentSlot";
+                }
+
+                // RPM is an additional candidate for terms containing at least
+                // two digits, so numeric weapon names remain searchable too.
+                static const QRegularExpression rpmPattern("^\\d{2,4}$");
+                if (rpmPattern.match(term).hasMatch() && weapon["rpm"].toInt() == term.toInt()) {
+                    if (900 > termScore) {
+                        termScore = 900;
+                        termMatchedField = "rpm";
+                    }
+                }
                 
                 // Check name (highest priority - 1.0x + 1000 bonus)
                 int nameScore = fuzzyScore(name, term);
@@ -1024,37 +1115,27 @@ void WeaponSearchModel::filterWeapons()
                 // Store matched fields as comma-separated string
                 weapon["matchedField"] = matchedFields.join(",");
                 
-                // Add season bonus: newer seasons get higher score
-                // This ensures that among similar name matches, newer season weapons rank higher
-                // Season bonus: seasonNum * 10 (e.g., S28 = +280, S24 = +240, difference = 40 points)
-                int seasonBonus = seasonNum * 10;
-                int finalScore = totalScore + seasonBonus;
-                
-                scoredWeapons.append({finalScore, seasonNum, name, weapon});
+                scoredWeapons.append({totalScore, seasonNum, name, weapon});
             }
         }
 
-        // Sort by: score (descending), then season (descending), then alphabetically
-        // Since season bonus is already included in score, this naturally prioritizes newer seasons
+        // Always sort search results by newest season first, then alphabetically.
+        // Score remains a final tie-breaker for otherwise identical entries.
         std::sort(scoredWeapons.begin(), scoredWeapons.end(),
                   [](const auto &a, const auto &b) {
-                      int scoreA = std::get<0>(a);
-                      int scoreB = std::get<0>(b);
-                      
-                      // Primary: sort by score (higher first)
-                      if (scoreA != scoreB) {
-                          return scoreA > scoreB;
-                      }
-                      
-                      // Secondary: sort by season number (higher/newer first)
                       int seasonA = std::get<1>(a);
                       int seasonB = std::get<1>(b);
                       if (seasonA != seasonB) {
                           return seasonA > seasonB;
                       }
-                      
-                      // Tertiary: sort alphabetically by name
-                      return std::get<2>(a).toLower() < std::get<2>(b).toLower();
+
+                      QString nameA = std::get<2>(a).toLower();
+                      QString nameB = std::get<2>(b).toLower();
+                      if (nameA != nameB) {
+                          return nameA < nameB;
+                      }
+
+                      return std::get<0>(a) > std::get<0>(b);
                   });
 
         // Determine result limit:
@@ -1066,12 +1147,12 @@ void WeaponSearchModel::filterWeapons()
         // - holofoilOnly, uniqueByName, adeptOnly, or exoticOnly with no other search: no limit
         // - Otherwise: limit to 50
         m_filteredWeapons = QJsonArray();
-        bool shouldRemoveLimit = noLimit || isSeasonSearch || isIdSearch || !sourceFilters.isEmpty() || !traitFilters.isEmpty() || hasDamageOrAmmoFilter || ((holofoilOnly || uniqueByName || adeptOnly || exoticOnly) && searchTerms.isEmpty());
+        bool shouldRemoveLimit = noLimit || isSeasonSearch || isIdSearch || !sourceFilters.isEmpty() || !traitFilters.isEmpty() || hasDamageOrAmmoFilter || ((holofoilOnly || uniqueByName || adeptOnly || exoticOnly || craftableOnly) && searchTerms.isEmpty());
         int maxResults = shouldRemoveLimit ? scoredWeapons.size() : qMin(50, static_cast<int>(scoredWeapons.size()));
         
         // Apply uniqueByName filter AFTER sorting - this ensures newer season weapons are preferred
-        // Since weapons are now sorted by score (which includes season bonus) and then by season,
-        // the first occurrence of each base name will be from the newest season
+        // Since weapons are sorted by season first, the first occurrence of
+        // each base name is the newest version.
         std::set<QString> seenUniqueNames;
         
         for (int i = 0; i < scoredWeapons.size(); ++i) {

@@ -226,7 +226,7 @@ Rectangle {
             function hasFlag(text, flag) {
                 var lower = text.toLowerCase()
                 // Check for the flag in any -xxx combination (e.g., -h, -!h, -h!, -!*hae, etc.)
-                var regex = new RegExp("-[!*hae]*" + flag + "[!*hae]*", "i")
+                var regex = new RegExp("-[!*haec]*" + flag + "[!*haec]*", "i")
                 return regex.test(lower)
             }
 
@@ -240,6 +240,7 @@ Rectangle {
                                         /\badept\b/i.test(searchInput.text)
             property bool hasExoticFlag: hasFlag(searchInput.text, "e") ||
                                          /\bexotic\b/i.test(searchInput.text)
+            property bool hasCraftableFlag: hasFlag(searchInput.text, "c")
 
             // Badges container wrapper (right-aligned inside search input)
             Item {
@@ -398,6 +399,27 @@ Rectangle {
                         font.pixelSize: 11
                         font.weight: Font.Medium
                         color: "#ffd700"
+                    }
+                }
+
+                // Craftable flag badge
+                Rectangle {
+                    visible: searchInputContainer.hasCraftableFlag
+                    width: craftableText.width + 16
+                    height: resultCountBadge.height
+                    radius: 6
+                    color: "#3a1717"
+                    border.color: "#ef4444"
+                    border.width: 1
+
+                    Text {
+                        id: craftableText
+                        anchors.centerIn: parent
+                        text: "Craftable"
+                        font.family: searchWindow.mainFont
+                        font.pixelSize: 11
+                        font.weight: Font.Medium
+                        color: "#ef4444"
                     }
                 }
 

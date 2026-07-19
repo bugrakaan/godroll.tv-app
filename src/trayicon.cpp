@@ -100,7 +100,9 @@ void TrayIcon::hide()
 
 void TrayIcon::onActivated(QSystemTrayIcon::ActivationReason reason)
 {
-    if (reason == QSystemTrayIcon::DoubleClick || reason == QSystemTrayIcon::Trigger) {
+    if (reason == QSystemTrayIcon::DoubleClick) {
+        emit forceShowRequested();
+    } else if (reason == QSystemTrayIcon::Trigger) {
         emit showHideRequested();
     }
 }

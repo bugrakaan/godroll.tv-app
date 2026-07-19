@@ -19,6 +19,7 @@ public:
 
 signals:
     void showHideRequested();
+    void forceShowRequested();
     void exitRequested();
     void checkForUpdatesRequested();
     void autoRefreshToggled(bool checked);

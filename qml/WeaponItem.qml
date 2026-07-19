@@ -74,7 +74,7 @@ Rectangle {
             radius: 7
             clip: true
             border.color: {
-                if (model.isTier5Weapon) return "#f4c542"
+                if (model.isTier3Weapon || model.isTier5Weapon) return "#f4c542"
                 var t = (model.tierTypeName || "").toLowerCase()
                 if (t === "exotic")    return "#ceae33"  // Exotic - gold
                 if (t === "legendary") return "#b07bdf"  // Legendary - purple
