@@ -1018,6 +1018,18 @@ void WeaponSearchModel::filterWeapons()
             int totalScore = 0;
             int nameMatchCount = 0;
             int fullNameScore = fuzzyScore(name, queryLower);
+            QString normalizedName = normalizeText(name);
+            QString normalizedPhrase = normalizeText(queryLower);
+            int nameMatchTier = 0; // 3 exact, 2 prefix, 1 contains, 0 fuzzy/other
+            if (!normalizedPhrase.isEmpty()) {
+                if (normalizedName == normalizedPhrase) {
+                    nameMatchTier = 3;
+                } else if (normalizedName.startsWith(normalizedPhrase)) {
+                    nameMatchTier = 2;
+                } else if (normalizedName.contains(normalizedPhrase)) {
+                    nameMatchTier = 1;
+                }
+            }
             QStringList matchedFields;
             
             for (const QString &term : searchTerms) {
@@ -1121,14 +1133,14 @@ void WeaponSearchModel::filterWeapons()
                 weapon["matchedField"] = matchedFields.join(",");
                 weapon["_nameMatchCount"] = nameMatchCount;
                 weapon["_fullNameScore"] = fullNameScore;
+                weapon["_nameMatchTier"] = nameMatchTier;
                 
                 scoredWeapons.append({totalScore, seasonNum, name, weapon});
             }
         }
 
-        // An exact full-name match wins even across seasons. Otherwise,
-        // name-field matches win over other fields and newer seasons come
-        // before fine-grained fuzzy relevance.
+        // Exact, prefix, and contiguous substring name matches win in that
+        // order. Season then ranks results within the same match tier.
         std::sort(scoredWeapons.begin(), scoredWeapons.end(),
                   [](const auto &a, const auto &b) {
                       const QJsonObject &weaponA = std::get<3>(a);
@@ -1139,10 +1151,10 @@ void WeaponSearchModel::filterWeapons()
 
                       int fullNameScoreA = weaponA["_fullNameScore"].toInt();
                       int fullNameScoreB = weaponB["_fullNameScore"].toInt();
-                      bool exactNameA = (fullNameScoreA == 1000);
-                      bool exactNameB = (fullNameScoreB == 1000);
-                      if (exactNameA != exactNameB) {
-                          return exactNameA;
+                      int nameTierA = weaponA["_nameMatchTier"].toInt();
+                      int nameTierB = weaponB["_nameMatchTier"].toInt();
+                      if (nameTierA != nameTierB) {
+                          return nameTierA > nameTierB;
                       }
 
                       if (nameMatchesA != nameMatchesB) {
