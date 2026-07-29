@@ -13,6 +13,7 @@ Window {
 
     // Track loading state
     property bool isLoading: true
+    property bool bootComplete: false
     
     // Loading message text (changes for manifest reload)
     property string loadingMessage: "Loading weapons..."
@@ -26,6 +27,7 @@ Window {
     
     // Track if update dialog is shown
     property bool updateDialogShown: false
+    property bool blockingModalVisible: updateDialog.visible || shortcutDialog.visible
     
     // Track if this is a manual update check (should always show dialog)
     property bool manualUpdateCheck: false
@@ -64,12 +66,25 @@ Window {
     Component.onCompleted: {
         x = (Screen.width - width) / 2
         y = (Screen.height - height) / 3
+    }
+
+    function completeBoot() {
+        if (root.bootComplete)
+            return
+        root.bootComplete = true
+
         if (!startHidden) {
-            // Let the native window and event loop finish initialization first.
             Qt.callLater(function() { root.forceShowWindow() })
         }
-        
-        // Check for updates after a short delay
+
+        if (!hotkey.registered) {
+            Qt.callLater(function() {
+                root.forceShowWindow()
+                shortcutDialog.openDialog(true)
+            })
+        }
+
+        // Background checks begin only after the main boot path completes.
         updateCheckTimer.start()
     }
     
@@ -162,7 +177,8 @@ Window {
         if (active) {
             isShowing = false
         }
-        if (!active && visible && !ignoreFocusLoss && !isHiding && !isShowing) {
+        if (!active && visible && !blockingModalVisible &&
+                !ignoreFocusLoss && !isHiding && !isShowing) {
             hideWindow(false)
         }
     }
@@ -170,17 +186,38 @@ Window {
     Connections {
         target: hotkey
         function onActivated() {
-            toggleWindow()
+            if (root.bootComplete)
+                toggleWindow()
         }
     }
 
     Connections {
         target: trayIcon
         function onShowHideRequested() {
-            toggleWindow()
+            if (root.bootComplete)
+                toggleWindow()
         }
         function onForceShowRequested() {
-            forceShowWindow()
+            if (root.bootComplete)
+                forceShowWindow()
+        }
+        function onHotkeyEditingStarted() {
+            if (!root.bootComplete)
+                return
+            root.ignoreFocusLoss = true
+            root.forceShowWindow()
+        }
+        function onHotkeyEditingFinished() {
+            if (!root.bootComplete)
+                return
+            root.ignoreFocusLoss = false
+            root.forceShowWindow()
+        }
+        function onHotkeyEditorRequested() {
+            if (!root.bootComplete)
+                return
+            root.forceShowWindow()
+            Qt.callLater(function() { shortcutDialog.openDialog(false) })
         }
         function onCheckForUpdatesRequested() {
             // Show window first if hidden
@@ -195,6 +232,10 @@ Window {
     }
 
     function toggleWindow() {
+        if (root.blockingModalVisible) {
+            forceShowWindow()
+            return
+        }
         // Treat stale visible-but-transparent/hiding states as hidden and recover them.
         if (!root.visible || root.opacity <= 0.001 || root.isHiding) {
             forceShowWindow()
@@ -218,12 +259,15 @@ Window {
             root.opacity = 1
             root.raise()
             root.requestActivate()
-            searchWindowComponent.refocusOnly()
+            if (shortcutDialog.visible)
+                shortcutDialog.focusInput()
+            else
+                searchWindowComponent.refocusOnly()
         })
     }
 
     function hideWindow(resetAfterHide) {
-        if (!root.visible || root.isHiding)
+        if (!root.bootComplete || !root.visible || root.isHiding)
             return
         root.escPressed = resetAfterHide
         root.isShowing = false
@@ -266,6 +310,7 @@ Window {
             root.ignoreFocusLoss = true
             refocusTimer.restart()
         }
+        onChangeShortcutRequested: shortcutDialog.openDialog(!hotkey.registered)
     }
     
     // Update Dialog overlay - blocks mouse events when dialog is visible
@@ -273,7 +318,7 @@ Window {
         id: updateDialogOverlay
         anchors.fill: parent
         color: "transparent"
-        visible: updateDialog.visible
+        visible: updateDialog.visible || shortcutDialog.visible
         z: 99
         
         MouseArea {
@@ -302,6 +347,13 @@ Window {
         onSkipped: {
             console.log("Update skipped")
         }
+    }
+
+    ShortcutDialog {
+        id: shortcutDialog
+        anchors.centerIn: parent
+        z: 100
+        onClosed: searchWindowComponent.refocusOnly()
     }
     
     // Update Success Notification - shows after app is updated

@@ -15,6 +15,7 @@ Rectangle {
 
     signal close()
     signal refocusNeeded()  // Emitted after opening URL in background to refocus window
+    signal changeShortcutRequested()
 
     // Loading state from parent
     property bool isLoading: false
@@ -875,13 +876,47 @@ Rectangle {
         }
 
         // Keyboard shortcut hint
-        Text {
-            Layout.fillWidth: true
-            text: "Alt+G to toggle • ESC to close • F5 to refresh • ↑↓ to navigate • Enter to open"
-            font.family: searchWindow.mainFont
-            font.pixelSize: 13
-            color: "#999999"
-            horizontalAlignment: Text.AlignHCenter
+        RowLayout {
+            Layout.alignment: Qt.AlignHCenter
+            spacing: 0
+
+            Text {
+                text: hotkey.registered
+                    ? hotkey.shortcutText + " to toggle"
+                    : hotkey.shortcutText + " unavailable"
+                font.family: searchWindow.mainFont
+                font.pixelSize: 13
+                font.weight: hotkey.registered ? Font.Normal : Font.DemiBold
+                color: shortcutMouse.containsMouse
+                    ? "#ffffff"
+                    : (hotkey.registered ? "#999999" : "#ef6464")
+
+                Behavior on color {
+                    ColorAnimation {
+                        duration: 140
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                MouseArea {
+                    id: shortcutMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: searchWindow.changeShortcutRequested()
+                }
+
+                ToolTip.visible: shortcutMouse.containsMouse && !hotkey.registered
+                ToolTip.delay: 250
+                ToolTip.text: "This shortcut is unavailable. Click to choose a new one."
+            }
+
+            Text {
+                text: " • ESC to close • F5 to refresh • ↑↓ to navigate • Enter to open"
+                font.family: searchWindow.mainFont
+                font.pixelSize: 13
+                color: "#999999"
+            }
         }
         
         // Update available hint

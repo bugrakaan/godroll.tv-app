@@ -69,6 +69,7 @@ qt_add_qml_module(GodrollLauncher
         qml/SearchWindow.qml
         qml/WeaponItem.qml
         qml/UpdateDialog.qml
+        qml/ShortcutDialog.qml
     RESOURCES
         resources/logo.svg
         resources/search-icon.svg

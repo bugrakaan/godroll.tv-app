@@ -16,13 +16,16 @@ class WeaponLoader : public QObject
 public:
     explicit WeaponLoader(QObject *parent = nullptr);
 
-    void loadWeapons(std::function<void(const QJsonArray&)> callback);
+    void loadWeapons(std::function<void(const QJsonArray&)> callback,
+                     int maxRetries = 3);
     
     // QML-callable reload method
     Q_INVOKABLE void reload();
 
 signals:
     void weaponsLoaded(const QJsonArray &weapons);
+    void loadFailed(const QString &message);
+    void loadStatusChanged(const QString &message);
     void reloadStarted();
 
 private slots:
@@ -38,6 +41,7 @@ private:
     QNetworkReply *m_currentReply;
     QTimer *m_timeoutTimer;
     int m_retryCount;
+    int m_maxRetries;
     static const int MAX_RETRIES = 3;
     static const int TIMEOUT_MS = 15000; // 15 seconds
 

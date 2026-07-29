@@ -45,13 +45,27 @@ jobs:
           echo "PATCH=$patch" >> $env:GITHUB_OUTPUT
         }
 
-    - name: Increment patch version
+    - name: Determine next version
       id: new_version
       shell: pwsh
       run: |
-        $major = "${{ steps.get_version.outputs.MAJOR }}"
-        $minor = "${{ steps.get_version.outputs.MINOR }}"
-        $patch = [int]"${{ steps.get_version.outputs.PATCH }}" + 1
+        $major = [int]"${{ steps.get_version.outputs.MAJOR }}"
+        $minor = [int]"${{ steps.get_version.outputs.MINOR }}"
+        $patch = [int]"${{ steps.get_version.outputs.PATCH }}"
+        $commitMessage = git log -1 --pretty=%B
+
+        if ($commitMessage -match '(?m)^BREAKING CHANGE:' -or
+            $commitMessage -match '^[a-z]+(\([^)]+\))?!:') {
+          $major++
+          $minor = 0
+          $patch = 0
+        } elseif ($commitMessage -match '^feat(\([^)]+\))?:') {
+          $minor++
+          $patch = 0
+        } else {
+          $patch++
+        }
+
         $newVersion = "$major.$minor.$patch"
         echo "NEW_VERSION=$newVersion" >> $env:GITHUB_OUTPUT
         echo "New version: $newVersion"
@@ -129,6 +143,11 @@ jobs:
         name: Godroll Launcher v${{ steps.new_version.outputs.NEW_VERSION }}
         body: |
           ## Godroll Launcher v${{ steps.new_version.outputs.NEW_VERSION }}
+
+          ### Changes in This Version
+          - The global shortcut can now be changed from the launcher or system tray
+          - A new startup screen shows boot progress and automatically retries if the launcher cannot start
+          - The system tray menu now includes a dedicated `Show` action to bring the launcher into view
           
           ### Search Features
           - **Flag modifiers**: `-!` (unique), `-*` (all), `-h` (holofoil), `-a` (adept), `-e` (exotic), `-c` (craftable)
@@ -158,7 +177,7 @@ jobs:
           ### Auto Refresh
           - Automatically checks for weapon database updates when app comes to foreground
           - Toggle on/off via "Auto Refresh Weapon List" in system tray menu
-          
+
           ### Installation
           1. Download `GodrollLauncher-v${{ steps.new_version.outputs.NEW_VERSION }}.zip`
           2. Extract to your preferred location

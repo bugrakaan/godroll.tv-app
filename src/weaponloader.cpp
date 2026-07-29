@@ -11,6 +11,7 @@ WeaponLoader::WeaponLoader(QObject *parent)
     , m_currentReply(nullptr)
     , m_timeoutTimer(new QTimer(this))
     , m_retryCount(0)
+    , m_maxRetries(MAX_RETRIES)
 {
     connect(m_networkManager, &QNetworkAccessManager::finished,
             this, &WeaponLoader::onNetworkReply);
@@ -20,10 +21,12 @@ WeaponLoader::WeaponLoader(QObject *parent)
     connect(m_timeoutTimer, &QTimer::timeout, this, &WeaponLoader::onTimeout);
 }
 
-void WeaponLoader::loadWeapons(std::function<void(const QJsonArray&)> callback)
+void WeaponLoader::loadWeapons(std::function<void(const QJsonArray&)> callback,
+                               int maxRetries)
 {
     m_callback = callback;
     m_retryCount = 0;
+    m_maxRetries = qMax(0, maxRetries);
     
     startRequest();
 }
@@ -33,7 +36,10 @@ void WeaponLoader::startRequest()
     // Cleanup any previous request
     cleanupCurrentRequest();
     
-    qDebug() << "Loading weapons from API..." << (m_retryCount > 0 ? QString("(retry %1/%2)").arg(m_retryCount).arg(MAX_RETRIES) : "");
+    qDebug() << "Loading weapons from API..." << (m_retryCount > 0 ? QString("(retry %1/%2)").arg(m_retryCount).arg(m_maxRetries) : "");
+    emit loadStatusChanged(m_retryCount > 0
+        ? QString("Trying to load your weapons again (%1 of %2)...").arg(m_retryCount).arg(m_maxRetries)
+        : QString("Connecting to Godroll TV..."));
     
     // Load weapons from your API with source=app to get perkColumns data
     QNetworkRequest request(QUrl("https://godroll.tv/api/weapons/list?source=app"));
@@ -62,14 +68,14 @@ void WeaponLoader::onTimeout()
 {
     qWarning() << "Request timed out after" << (TIMEOUT_MS / 1000) << "seconds";
     
-    if (m_retryCount < MAX_RETRIES) {
+    if (m_retryCount < m_maxRetries) {
         m_retryCount++;
-        qDebug() << "Retrying... (" << m_retryCount << "/" << MAX_RETRIES << ")";
+        qDebug() << "Retrying... (" << m_retryCount << "/" << m_maxRetries << ")";
         startRequest();
     } else {
         qWarning() << "Max retries reached. Failed to load weapons.";
         cleanupCurrentRequest();
-        // Return empty array on failure
+        emit loadFailed("Could not connect to the weapon service.");
         if (m_callback) {
             m_callback(QJsonArray());
         }
@@ -94,6 +100,7 @@ void WeaponLoader::onNetworkReply(QNetworkReply *reply)
         if (doc.isObject()) {
             QJsonObject obj = doc.object();
             if (obj.contains("weapons") && obj["success"].toBool()) {
+                emit loadStatusChanged("Organizing your weapons...");
                 QJsonArray weapons = obj["weapons"].toArray();
                 
                 // Process weapons to add season info from traitIds
@@ -144,39 +151,43 @@ void WeaponLoader::onNetworkReply(QNetworkReply *reply)
             } else {
                 qWarning() << "API response does not contain weapons array";
                 // Retry on invalid response
-                if (m_retryCount < MAX_RETRIES) {
+                if (m_retryCount < m_maxRetries) {
                     m_retryCount++;
-                    qDebug() << "Invalid response, retrying... (" << m_retryCount << "/" << MAX_RETRIES << ")";
+                    qDebug() << "Invalid response, retrying... (" << m_retryCount << "/" << m_maxRetries << ")";
                     reply->deleteLater();
                     m_currentReply = nullptr;
                     startRequest();
                     return;
+                } else {
+                    emit loadFailed("The weapon service returned an unexpected response.");
                 }
             }
         } else {
             qWarning() << "API response is not a JSON object";
             // Retry on invalid response
-            if (m_retryCount < MAX_RETRIES) {
+            if (m_retryCount < m_maxRetries) {
                 m_retryCount++;
-                qDebug() << "Invalid JSON, retrying... (" << m_retryCount << "/" << MAX_RETRIES << ")";
+                qDebug() << "Invalid JSON, retrying... (" << m_retryCount << "/" << m_maxRetries << ")";
                 reply->deleteLater();
                 m_currentReply = nullptr;
                 startRequest();
                 return;
+            } else {
+                emit loadFailed("The weapon service returned unreadable data.");
             }
         }
     } else {
         qWarning() << "Failed to load weapons:" << reply->errorString();
         // Retry on network error
-        if (m_retryCount < MAX_RETRIES) {
+        if (m_retryCount < m_maxRetries) {
             m_retryCount++;
-            qDebug() << "Network error, retrying... (" << m_retryCount << "/" << MAX_RETRIES << ")";
+            qDebug() << "Network error, retrying... (" << m_retryCount << "/" << m_maxRetries << ")";
             reply->deleteLater();
             m_currentReply = nullptr;
             startRequest();
             return;
         } else {
-            // Return empty array on final failure
+            emit loadFailed("Could not connect to the weapon service.");
             if (m_callback) {
                 m_callback(QJsonArray());
             }
@@ -209,5 +220,6 @@ void WeaponLoader::reload()
     qDebug() << "Reloading weapons...";
     emit reloadStarted();
     m_retryCount = 0;
+    m_maxRetries = MAX_RETRIES;
     startRequest();
 }
