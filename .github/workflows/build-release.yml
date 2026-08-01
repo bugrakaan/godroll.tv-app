@@ -123,7 +123,11 @@ jobs:
       shell: pwsh
       run: |
         $version = "${{ steps.new_version.outputs.NEW_VERSION }}"
-        Compress-Archive -Path "build/deploy/*" -DestinationPath "GodrollLauncher-v$version.zip"
+        $zipPath = "GodrollLauncher-v$version.zip"
+        Compress-Archive -Path "build/deploy/*" -DestinationPath $zipPath
+        $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $checksum = "$hash  $(Split-Path $zipPath -Leaf)`n"
+        [System.IO.File]::WriteAllText("$zipPath.sha256", $checksum, [System.Text.UTF8Encoding]::new($false))
 
     - name: Commit version update
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -145,9 +149,9 @@ jobs:
           ## Godroll Launcher v${{ steps.new_version.outputs.NEW_VERSION }}
 
           ### Changes in This Version
-          - The global shortcut can now be changed from the launcher or system tray
-          - A new startup screen shows boot progress and automatically retries if the launcher cannot start
-          - The system tray menu now includes a dedicated `Show` action to bring the launcher into view
+          - Updates are now verified before installation and safely restore the previous version if something goes wrong
+          - The update screen now provides clearer progress and error feedback
+          - Weapon links now open reliably in the user's preferred browser
           
           ### Search Features
           - **Flag modifiers**: `-!` (unique), `-*` (all), `-h` (holofoil), `-a` (adept), `-e` (exotic), `-c` (craftable)
@@ -167,6 +171,10 @@ jobs:
           - `-s crotas` → Crota's End
           - `-s trials` → Trials of Osiris
           - `-s nightfall` → Nightfall
+
+          ### Launcher & Window
+          - A startup screen shows boot progress and automatically retries if the launcher cannot start
+          - The system tray menu includes a dedicated `Show` action to bring the launcher into view
           
           ### Auto-Updater
           - Automatic update check on startup
@@ -184,6 +192,8 @@ jobs:
           3. Run `GodrollLauncher.exe`
           
           ### Keyboard Shortcuts
+          - The global shortcut can be changed from the launcher or system tray
+
           | Shortcut | Action |
           |----------|--------|
           | `Alt+G` | Toggle launcher (global) |
@@ -192,7 +202,9 @@ jobs:
           | `↑/↓` | Navigate results |
           | `Enter` | Open weapon |
           | `Middle-click` | Open weapon (keep launcher open) |
-        files: GodrollLauncher-v${{ steps.new_version.outputs.NEW_VERSION }}.zip
+        files: |
+          GodrollLauncher-v${{ steps.new_version.outputs.NEW_VERSION }}.zip
+          GodrollLauncher-v${{ steps.new_version.outputs.NEW_VERSION }}.zip.sha256
         draft: false
         prerelease: false
       env:

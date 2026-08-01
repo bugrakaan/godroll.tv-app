@@ -22,6 +22,7 @@ public:
     void hide();
     void setHotkeyStatus(const QString &shortcut, bool registered);
     void showHotkeyError(const QString &message);
+    void showUpdateError(const QString &message);
     void setHotkeyValidator(const std::function<bool(const QString &, QString &)> &validator);
     void setMainWindow(QWindow *window);
     void setBootComplete(bool complete);

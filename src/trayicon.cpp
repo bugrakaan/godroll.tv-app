@@ -191,6 +191,12 @@ void TrayIcon::showHotkeyError(const QString &message)
                             QSystemTrayIcon::Warning, 7000);
 }
 
+void TrayIcon::showUpdateError(const QString &message)
+{
+    m_trayIcon->showMessage("Update Couldn't Be Installed", message,
+                            QSystemTrayIcon::Warning, 10000);
+}
+
 void TrayIcon::setHotkeyValidator(
     const std::function<bool(const QString &, QString &)> &validator)
 {

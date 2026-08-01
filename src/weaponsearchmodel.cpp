@@ -1422,11 +1422,28 @@ void WeaponSearchModel::openWeapon(int index)
     QJsonObject weapon = m_filteredWeapons[index].toObject();
     QString hash = weapon["hash"].toVariant().toString();
     
-    QString url = QString("https://godroll.tv/%1").arg(hash);
+    // grtv.app is the launcher redirect domain. It keeps tracking out of the
+    // destination URL while preserving the weapon path.
+    const QUrl redirectUrl(QString("https://grtv.app/%1").arg(hash));
+    const QString url = redirectUrl.toString(QUrl::FullyEncoded);
     
-    // If PWA mode is disabled, just open in default browser
-    if (!m_openInPWA) {
-        QDesktopServices::openUrl(QUrl(url));
+    bool useChromeAppMode = m_openInPWA;
+
+#ifdef Q_OS_WIN
+    // App mode is Chrome-specific. Respect the user's browser choice instead
+    // of forcing Chrome merely because it happens to be installed.
+    if (useChromeAppMode) {
+        QSettings defaultBrowser(
+            "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\https\\UserChoice",
+            QSettings::NativeFormat);
+        const QString browserProgId = defaultBrowser.value("ProgId").toString();
+        useChromeAppMode = browserProgId.startsWith("ChromeHTML", Qt::CaseInsensitive);
+    }
+#endif
+
+    // Non-Chrome defaults and disabled PWA mode use the system browser.
+    if (!useChromeAppMode) {
+        QDesktopServices::openUrl(redirectUrl);
         return;
     }
     
@@ -1450,11 +1467,13 @@ void WeaponSearchModel::openWeapon(int index)
     
     if (!chromePath.isEmpty()) {
         // Open in Chrome app mode (PWA-like standalone window)
-        QProcess::startDetached(chromePath, {"--app=" + url});
-    } else {
-        // Fallback to default browser
-        QDesktopServices::openUrl(QUrl(url));
+        if (QProcess::startDetached(chromePath, {"--app=" + url}))
+            return;
     }
+
+    // Chrome may be absent or fail to launch; always fall back to the user's
+    // configured default browser instead of dropping the request.
+    QDesktopServices::openUrl(redirectUrl);
 }
 
 void WeaponSearchModel::clearSearch()

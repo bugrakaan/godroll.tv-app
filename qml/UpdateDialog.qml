@@ -4,8 +4,8 @@ import QtQuick.Layouts
 
 Rectangle {
     id: updateDialog
-    width: 450
-    height: contentColumn.height + 48
+    width: parent ? parent.width * 0.8 : 450
+    height: parent ? parent.height * 0.8 : 420
     radius: 14
     color: "#1a1a1a"
     
@@ -13,18 +13,27 @@ Rectangle {
     
     // Font
     property string mainFont: "Space Grotesk"
+    property string errorMessage: ""
     
     signal accepted()
     signal rejected()
     signal skipped()
     
     function show() {
+        errorMessage = ""
         visible = true
         opacity = 1
     }
     
     function hide() {
         visible = false
+    }
+
+    Connections {
+        target: updateChecker
+        function onDownloadFailed(error) {
+            updateDialog.errorMessage = error
+        }
     }
     
     // Semi-transparent overlay background
@@ -38,6 +47,7 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
+        anchors.bottom: parent.bottom
         anchors.margins: 24
         spacing: 16
         
@@ -80,6 +90,8 @@ Rectangle {
         // Release notes (scrollable)
         Rectangle {
             Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: 80
             Layout.preferredHeight: Math.min(releaseNotesText.contentHeight + 16, 150)
             color: "#252525"
             radius: 8
@@ -142,6 +154,17 @@ Rectangle {
                     opacity: 0.7
                 }
             }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: updateDialog.errorMessage.length > 0
+            text: updateDialog.errorMessage
+            font.family: updateDialog.mainFont
+            font.pixelSize: 13
+            color: "#ff8a80"
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
         }
         
         // Buttons row - different buttons based on update availability
@@ -274,6 +297,7 @@ Rectangle {
                     cursorShape: updateChecker.downloading ? Qt.BusyCursor : Qt.PointingHandCursor
                     enabled: !updateChecker.downloading
                     onClicked: {
+                        updateDialog.errorMessage = ""
                         updateChecker.downloadAndInstall()
                     }
                 }
@@ -380,6 +404,7 @@ Rectangle {
                     cursorShape: updateChecker.downloading ? Qt.BusyCursor : Qt.PointingHandCursor
                     enabled: !updateChecker.downloading
                     onClicked: {
+                        updateDialog.errorMessage = ""
                         updateChecker.downloadAndInstall()
                     }
                 }

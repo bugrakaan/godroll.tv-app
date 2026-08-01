@@ -62,23 +62,30 @@ private slots:
     void onNetworkReply(QNetworkReply *reply);
     void onDownloadReadyRead();
     void onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal);
+    void onChecksumFinished();
     void onDownloadFinished();
     void onExtractionFinished();
 
 private:
     bool isNewerVersion(const QString &latest, const QString &current) const;
+    void startUpdateDownload();
     void launchInstallerAndQuit(const QString &installerPath);
     void startAsyncExtraction(const QString &zipPath);
-    static bool extractZipAndReplace(const QString &zipPath, const QString &appDir, const QString &appExe);
+    static bool extractZipAndReplace(const QString &zipPath, const QString &appDir,
+                                     const QString &appExe, qint64 launcherPid);
     void setStatusText(const QString &text);
     
     QNetworkAccessManager *m_networkManager;
+    QNetworkReply *m_checksumReply = nullptr;
     QNetworkReply *m_downloadReply = nullptr;
     QFile *m_downloadFile = nullptr;
     QString m_currentVersion;
     QString m_latestVersion;
     QString m_releaseNotes;
     QString m_downloadUrl;
+    QString m_checksumUrl;
+    QString m_releaseAssetSha256;
+    QString m_downloadSha256;
     QString m_htmlUrl;  // GitHub release page URL
     QString m_downloadedFilePath;
     QString m_updatedToVersion;

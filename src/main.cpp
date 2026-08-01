@@ -181,6 +181,7 @@ int main(int argc, char *argv[])
     bool startHidden = false;
     bool holdSplash = false;
     bool failBoot = false;
+    bool updateInstallFailed = false;
     int bootAttempt = 1;
     QString bootHandoffServer;
     for (int i = 1; i < argc; ++i) {
@@ -191,6 +192,8 @@ int main(int argc, char *argv[])
             holdSplash = true;
         } else if (argument == "--fail-boot") {
             failBoot = true;
+        } else if (argument == "--update-failed") {
+            updateInstallFailed = true;
         } else if (argument.startsWith("--boot-attempt=")) {
             bool ok = false;
             const int parsedAttempt = argument.mid(15).toInt(&ok);
@@ -491,6 +494,13 @@ int main(int argc, char *argv[])
     
     // Show tray icon
     trayIcon.show();
+
+    if (updateInstallFailed) {
+        QTimer::singleShot(1000, &trayIcon, [&trayIcon]() {
+            trayIcon.showUpdateError(
+                "Godroll TV kept your previous version. Please try the update again.");
+        });
+    }
 
     // Connect tray icon exit signal
     QObject::connect(&trayIcon, &TrayIcon::exitRequested, &app, &QApplication::quit);

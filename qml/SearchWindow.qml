@@ -189,7 +189,7 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     
-                    onClicked: Qt.openUrlExternally("https://godroll.tv")
+                    onClicked: Qt.openUrlExternally("https://grtv.app/")
                     
                     ToolTip.visible: containsMouse
                     ToolTip.delay: 300

@@ -16,6 +16,10 @@
 #include <QTextStream>
 #include <QtConcurrent>
 #include <QDateTime>
+#include <QCryptographicHash>
+#include <QHash>
+#include <QRegularExpression>
+#include <QUuid>
 
 const QString UpdateChecker::GITHUB_API_URL = "https://api.github.com/repos/%1/releases/latest";
 const QString UpdateChecker::GITHUB_REPO = "bugrakaan/godroll.tv-app";
@@ -25,9 +29,6 @@ UpdateChecker::UpdateChecker(QObject *parent)
     , m_networkManager(new QNetworkAccessManager(this))
     , m_currentVersion(QCoreApplication::applicationVersion())
 {
-    connect(m_networkManager, &QNetworkAccessManager::finished,
-            this, &UpdateChecker::onNetworkReply);
-    
     // Load last check time from settings
     QSettings settings("Godroll.tv", "GodrollLauncher");
     m_lastCheckTime = settings.value("lastUpdateCheckTime", 0).toLongLong();
@@ -69,7 +70,10 @@ void UpdateChecker::checkForUpdates()
     
     qDebug() << "Checking for updates at:" << apiUrl;
     
-    m_networkManager->get(request);
+    QNetworkReply *reply = m_networkManager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        onNetworkReply(reply);
+    });
 }
 
 void UpdateChecker::checkForUpdatesIfNeeded()
@@ -127,40 +131,74 @@ void UpdateChecker::onNetworkReply(QNetworkReply *reply)
     
     // Find Windows asset download URL (prefer .zip for auto-update)
     m_downloadUrl = m_htmlUrl; // Default to release page
+    m_checksumUrl.clear();
+    m_releaseAssetSha256.clear();
+    m_downloadSha256.clear();
     QString zipUrl, exeUrl, msiUrl;
+    QString zipName, exeName, msiName;
+    QString zipDigest, exeDigest, msiDigest;
+    QHash<QString, QString> assetUrls;
     QJsonArray assets = release["assets"].toArray();
     for (const QJsonValue &assetVal : assets) {
         QJsonObject asset = assetVal.toObject();
-        QString name = asset["name"].toString().toLower();
+        const QString assetName = asset["name"].toString();
+        QString name = assetName.toLower();
         QString url = asset["browser_download_url"].toString();
+        assetUrls.insert(name, url);
+        QString digest = asset["digest"].toString();
+        if (digest.startsWith("sha256:", Qt::CaseInsensitive))
+            digest = digest.mid(7).toLower();
+        else
+            digest.clear();
         // Look for Windows files
         if (name.contains("windows") || name.contains("win")) {
             if (name.endsWith(".zip")) {
                 zipUrl = url;
+                zipName = assetName;
+                zipDigest = digest;
             } else if (name.endsWith(".exe")) {
                 exeUrl = url;
+                exeName = assetName;
+                exeDigest = digest;
             } else if (name.endsWith(".msi")) {
                 msiUrl = url;
+                msiName = assetName;
+                msiDigest = digest;
             }
         } else {
             // Fallback: any zip/exe/msi
             if (name.endsWith(".zip") && zipUrl.isEmpty()) {
                 zipUrl = url;
+                zipName = assetName;
+                zipDigest = digest;
             } else if (name.endsWith(".exe") && exeUrl.isEmpty()) {
                 exeUrl = url;
+                exeName = assetName;
+                exeDigest = digest;
             } else if (name.endsWith(".msi") && msiUrl.isEmpty()) {
                 msiUrl = url;
+                msiName = assetName;
+                msiDigest = digest;
             }
         }
     }
     // Prefer ZIP for auto-update, then exe, then msi
+    QString selectedAssetName;
     if (!zipUrl.isEmpty()) {
         m_downloadUrl = zipUrl;
+        selectedAssetName = zipName;
+        m_releaseAssetSha256 = zipDigest;
     } else if (!exeUrl.isEmpty()) {
         m_downloadUrl = exeUrl;
+        selectedAssetName = exeName;
+        m_releaseAssetSha256 = exeDigest;
     } else if (!msiUrl.isEmpty()) {
         m_downloadUrl = msiUrl;
+        selectedAssetName = msiName;
+        m_releaseAssetSha256 = msiDigest;
     }
+    if (!selectedAssetName.isEmpty())
+        m_checksumUrl = assetUrls.value((selectedAssetName + ".sha256").toLower());
     
     qDebug() << "Download URL:" << m_downloadUrl;
     
@@ -230,7 +268,7 @@ bool UpdateChecker::isVersionSkipped(const QString &version)
 
 void UpdateChecker::downloadAndInstall()
 {
-    if (m_downloading || m_downloadUrl.isEmpty()) return;
+    if (m_downloading || m_checksumReply || m_downloadUrl.isEmpty()) return;
     
     // If URL is not a direct file download, open browser instead
     if (!m_downloadUrl.endsWith(".exe") && !m_downloadUrl.endsWith(".zip") && !m_downloadUrl.endsWith(".msi")) {
@@ -238,11 +276,89 @@ void UpdateChecker::downloadAndInstall()
         openDownloadPage();
         return;
     }
+
+    if (m_checksumUrl.isEmpty()) {
+        setStatusText("Update verification unavailable");
+        emit downloadFailed(
+            "This update cannot be verified. Please download it manually from the release page.");
+        return;
+    }
     
     m_downloading = true;
     m_downloadProgress = 0;
+    setStatusText("Verifying update...");
     emit downloadingChanged();
     emit downloadProgressChanged();
+
+    QNetworkRequest checksumRequest{QUrl(m_checksumUrl)};
+    checksumRequest.setRawHeader("User-Agent", "GodrollLauncher");
+    checksumRequest.setRawHeader("Accept", "text/plain");
+    checksumRequest.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                                 QNetworkRequest::NoLessSafeRedirectPolicy);
+    checksumRequest.setMaximumRedirectsAllowed(10);
+    m_checksumReply = m_networkManager->get(checksumRequest);
+    connect(m_checksumReply, &QNetworkReply::finished,
+            this, &UpdateChecker::onChecksumFinished);
+}
+
+void UpdateChecker::onChecksumFinished()
+{
+    if (!m_checksumReply)
+        return;
+
+    QNetworkReply *reply = m_checksumReply;
+    m_checksumReply = nullptr;
+    const QByteArray checksumData = reply->readAll();
+    const QNetworkReply::NetworkError networkError = reply->error();
+    const QString networkErrorText = reply->errorString();
+    reply->deleteLater();
+
+    auto failVerification = [this](const QString &message) {
+        m_downloading = false;
+        emit downloadingChanged();
+        setStatusText("Update verification failed");
+        emit downloadFailed(message);
+    };
+
+    if (networkError != QNetworkReply::NoError) {
+        qWarning() << "Checksum download failed:" << networkErrorText;
+        failVerification("The update checksum could not be downloaded. Please try again.");
+        return;
+    }
+
+    const QString checksumText = QString::fromUtf8(checksumData).trimmed();
+    const QRegularExpression checksumPattern(
+        "^([A-Fa-f0-9]{64})[\\t ]+\\*?([^\\r\\n]+)$");
+    const QRegularExpressionMatch match = checksumPattern.match(checksumText);
+    const QString expectedFileName = QUrl(m_downloadUrl).fileName();
+    if (!match.hasMatch() ||
+        QFileInfo(match.captured(2).trimmed()).fileName() != expectedFileName) {
+        qWarning() << "Invalid checksum asset for" << expectedFileName;
+        failVerification("The update checksum is invalid. Installation was stopped.");
+        return;
+    }
+
+    const QString checksumSha256 = match.captured(1).toLower();
+    if (!m_releaseAssetSha256.isEmpty() &&
+        checksumSha256 != m_releaseAssetSha256.toLower()) {
+        qWarning() << "Release digest and checksum asset do not match";
+        failVerification("The update verification information does not match. Installation was stopped.");
+        return;
+    }
+
+    m_downloadSha256 = checksumSha256;
+    startUpdateDownload();
+}
+
+void UpdateChecker::startUpdateDownload()
+{
+    if (m_downloadSha256.isEmpty()) {
+        m_downloading = false;
+        emit downloadingChanged();
+        setStatusText("Update verification failed");
+        emit downloadFailed("The update checksum is missing. Installation was stopped.");
+        return;
+    }
     
     // Prepare download location
     QString downloadDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
@@ -280,6 +396,9 @@ void UpdateChecker::downloadAndInstall()
     m_downloadFile = new QFile(m_downloadedFilePath);
     if (!m_downloadFile->open(QIODevice::WriteOnly)) {
         qWarning() << "Failed to open file for writing:" << m_downloadedFilePath;
+        m_downloadReply->abort();
+        m_downloadReply->deleteLater();
+        m_downloadReply = nullptr;
         m_downloading = false;
         emit downloadingChanged();
         emit downloadFailed("Failed to create download file");
@@ -360,6 +479,37 @@ void UpdateChecker::onDownloadFinished()
         }
         return;
     }
+
+    if (!m_downloadSha256.isEmpty()) {
+        QFile downloadedFile(m_downloadedFilePath);
+        if (!downloadedFile.open(QIODevice::ReadOnly)) {
+            m_downloading = false;
+            emit downloadingChanged();
+            setStatusText("Download verification failed");
+            emit downloadFailed("The downloaded update could not be verified.");
+            m_downloadReply->deleteLater();
+            m_downloadReply = nullptr;
+            delete m_downloadFile;
+            m_downloadFile = nullptr;
+            return;
+        }
+
+        QCryptographicHash hasher(QCryptographicHash::Sha256);
+        if (!hasher.addData(&downloadedFile) ||
+            QString::fromLatin1(hasher.result().toHex()).toLower() != m_downloadSha256) {
+            downloadedFile.close();
+            QFile::remove(m_downloadedFilePath);
+            m_downloading = false;
+            emit downloadingChanged();
+            setStatusText("Download verification failed");
+            emit downloadFailed("The downloaded update did not pass its integrity check.");
+            m_downloadReply->deleteLater();
+            m_downloadReply = nullptr;
+            delete m_downloadFile;
+            m_downloadFile = nullptr;
+            return;
+        }
+    }
     
     qDebug() << "Download complete:" << m_downloadedFilePath << "(" << fileSize << "bytes)";
     
@@ -368,10 +518,6 @@ void UpdateChecker::onDownloadFinished()
         delete m_downloadFile;
         m_downloadFile = nullptr;
     }
-    
-    // Save the new version to settings so we can show it after restart
-    QSettings settings("Godroll.tv", "GodrollLauncher");
-    settings.setValue("updatedToVersion", m_latestVersion);
     
     emit downloadComplete(m_downloadedFilePath);
     
@@ -438,6 +584,7 @@ void UpdateChecker::startAsyncExtraction(const QString &zipPath)
     // Store app paths before starting the thread (must be called from main thread)
     QString appDir = QCoreApplication::applicationDirPath();
     QString appExe = QCoreApplication::applicationFilePath();
+    qint64 launcherPid = QCoreApplication::applicationPid();
     
     // Create watcher if needed
     if (!m_extractionWatcher) {
@@ -447,8 +594,8 @@ void UpdateChecker::startAsyncExtraction(const QString &zipPath)
     }
     
     // Run extraction in a separate thread
-    QFuture<bool> future = QtConcurrent::run([zipPath, appDir, appExe]() {
-        return extractZipAndReplace(zipPath, appDir, appExe);
+    QFuture<bool> future = QtConcurrent::run([zipPath, appDir, appExe, launcherPid]() {
+        return extractZipAndReplace(zipPath, appDir, appExe, launcherPid);
     });
     
     m_extractionWatcher->setFuture(future);
@@ -459,14 +606,12 @@ void UpdateChecker::onExtractionFinished()
     bool success = m_extractionWatcher->result();
     
     if (success) {
+        // The external updater is now the sole owner of replacement and restart.
+        // It waits for this exact PID to exit before touching application files.
+        QSettings settings("Godroll.tv", "GodrollLauncher");
+        settings.setValue("updatedToVersion", m_latestVersion);
         setStatusText("Restarting...");
-        // Small delay before restart
-        QTimer::singleShot(100, this, []() {
-            QString appPath = QCoreApplication::applicationFilePath();
-            qDebug() << "Restarting application:" << appPath;
-            QProcess::startDetached(appPath, QStringList());
-            QCoreApplication::quit();
-        });
+        QCoreApplication::quit();
     } else {
         m_downloading = false;
         emit downloadingChanged();
@@ -474,12 +619,14 @@ void UpdateChecker::onExtractionFinished()
     }
 }
 
-bool UpdateChecker::extractZipAndReplace(const QString &zipPath, const QString &appDir, const QString &appExe)
+bool UpdateChecker::extractZipAndReplace(const QString &zipPath, const QString &appDir,
+                                         const QString &appExe, qint64 launcherPid)
 {
     qDebug() << "Extracting ZIP:" << zipPath;
-    
-    // Get the application directory
-    QString tempExtractDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/GodrollUpdate";
+
+    const QString updateId = QUuid::createUuid().toString(QUuid::Id128);
+    const QString tempRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    const QString tempExtractDir = tempRoot + "/GodrollUpdate-" + updateId;
     
     // Clean up any previous temp extraction
     QDir tempDir(tempExtractDir);
@@ -498,72 +645,96 @@ bool UpdateChecker::extractZipAndReplace(const QString &zipPath, const QString &
     
     qDebug() << "Running PowerShell:" << psCommand;
     
-    extractProcess.start("powershell", QStringList() << "-NoProfile" << "-Command" << psCommand);
-    extractProcess.waitForFinished(60000); // 60 second timeout
-    
-    if (extractProcess.exitCode() != 0) {
+    extractProcess.start("powershell.exe", QStringList() << "-NoProfile" << "-NonInteractive"
+                                                        << "-Command" << psCommand);
+    if (!extractProcess.waitForStarted(10000) ||
+        !extractProcess.waitForFinished(60000) ||
+        extractProcess.exitStatus() != QProcess::NormalExit ||
+        extractProcess.exitCode() != 0) {
         qWarning() << "Failed to extract ZIP:" << extractProcess.readAllStandardError();
         return false;
     }
     
     qDebug() << "ZIP extracted to:" << tempExtractDir;
     
-    // Find the extracted content (might be in a subfolder)
-    QDir extractedDir(tempExtractDir);
-    QStringList entries = extractedDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-    
-    QString sourceDir = tempExtractDir;
-    if (entries.size() == 1) {
-        // Content is in a subfolder (common with GitHub releases)
-        sourceDir = tempExtractDir + "/" + entries.first();
+    // Locate the deploy root by finding the executable in the extracted tree.
+    QString sourceExe;
+    QDirIterator exeIterator(tempExtractDir, {QFileInfo(appExe).fileName()},
+                             QDir::Files, QDirIterator::Subdirectories);
+    if (exeIterator.hasNext())
+        sourceExe = exeIterator.next();
+    if (sourceExe.isEmpty()) {
+        qWarning() << "The update archive does not contain" << QFileInfo(appExe).fileName();
+        return false;
     }
-    
+    const QString sourceDir = QFileInfo(sourceExe).absolutePath();
     qDebug() << "Source directory for update:" << sourceDir;
-    
-    // Create a batch script to replace files after app exits
-    QString batchPath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/godroll_update.bat";
-    QFile batchFile(batchPath);
-    
-    if (batchFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QTextStream stream(&batchFile);
-        stream << "@echo off\r\n";
-        stream << "echo Updating Godroll Launcher...\r\n";
-        stream << "timeout /t 2 /nobreak >nul\r\n"; // Wait for app to close
-        
-        // Copy all files from extracted directory to app directory
-        QString sourceDirWin = QString(sourceDir).replace("/", "\\");
-        QString appDirWin = QString(appDir).replace("/", "\\");
-        stream << QString("xcopy \"%1\\*\" \"%2\\\" /E /Y /I /Q\r\n").arg(sourceDirWin, appDirWin);
-        
-        // Clean up
-        QString tempExtractDirWin = QString(tempExtractDir).replace("/", "\\");
-        QString zipPathWin = QString(zipPath).replace("/", "\\");
-        stream << QString("rmdir /S /Q \"%1\"\r\n").arg(tempExtractDirWin);
-        stream << QString("del \"%1\"\r\n").arg(zipPathWin);
-        
-        // Restart the application
-        QString appExeWin = QString(appExe).replace("/", "\\");
-        stream << QString("start \"\" \"%1\"\r\n").arg(appExeWin);
-        
-        // Delete this batch file
-        QString batchPathWin = QString(batchPath).replace("/", "\\");
-        stream << QString("del \"%1\"\r\n").arg(batchPathWin);
-        
-        batchFile.close();
-        
-        qDebug() << "Created update batch script:" << batchPath;
-        
-        // Run the batch script
-        bool started = QProcess::startDetached("cmd", QStringList() << "/c" << batchPath);
-        
-        if (!started) {
-            qWarning() << "Failed to start update script";
-            return false;
-        }
-        
-        return true;
+
+    auto psQuote = [](QString value) {
+        return value.replace("'", "''");
+    };
+
+    const QString updaterPath = tempRoot + "/godroll-update-" + updateId + ".ps1";
+    const QString failureLog = tempRoot + "/godroll-update-" + updateId + ".log";
+    const QString backupDir = tempRoot + "/GodrollBackup-" + updateId;
+    QFile updaterFile(updaterPath);
+    if (!updaterFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qWarning() << "Failed to create update helper:" << updaterPath;
+        return false;
     }
-    
-    qWarning() << "Failed to create update batch script";
-    return false;
+
+    QTextStream stream(&updaterFile);
+    stream << "$ErrorActionPreference = 'Stop'\r\n";
+    stream << QString("$launcherPid = %1\r\n").arg(launcherPid);
+    stream << QString("$sourceDir = '%1'\r\n").arg(psQuote(QDir::toNativeSeparators(sourceDir)));
+    stream << QString("$sourceExe = '%1'\r\n").arg(psQuote(QDir::toNativeSeparators(sourceExe)));
+    stream << QString("$appDir = '%1'\r\n").arg(psQuote(QDir::toNativeSeparators(appDir)));
+    stream << QString("$appExe = '%1'\r\n").arg(psQuote(QDir::toNativeSeparators(appExe)));
+    stream << QString("$stagingDir = '%1'\r\n").arg(psQuote(QDir::toNativeSeparators(tempExtractDir)));
+    stream << QString("$zipPath = '%1'\r\n").arg(psQuote(QDir::toNativeSeparators(zipPath)));
+    stream << QString("$failureLog = '%1'\r\n").arg(psQuote(QDir::toNativeSeparators(failureLog)));
+    stream << QString("$backupDir = '%1'\r\n").arg(psQuote(QDir::toNativeSeparators(backupDir)));
+    stream << QString("$updaterPath = '%1'\r\n").arg(psQuote(QDir::toNativeSeparators(updaterPath)));
+    stream << "$newFiles = [System.Collections.Generic.List[string]]::new()\r\n";
+    stream << "try {\r\n";
+    stream << "  $launcher = Get-Process -Id $launcherPid -ErrorAction SilentlyContinue\r\n";
+    stream << "  if ($null -ne $launcher) { Wait-Process -Id $launcherPid -Timeout 60 -ErrorAction Stop }\r\n";
+    stream << "  New-Item -ItemType Directory -Path $backupDir -Force | Out-Null\r\n";
+    stream << "  Get-ChildItem -LiteralPath $sourceDir -Recurse -File | ForEach-Object {\r\n";
+    stream << "    $relativePath = $_.FullName.Substring($sourceDir.Length).TrimStart('\\')\r\n";
+    stream << "    $targetPath = Join-Path $appDir $relativePath\r\n";
+    stream << "    if (Test-Path -LiteralPath $targetPath) {\r\n";
+    stream << "      $backupPath = Join-Path $backupDir $relativePath\r\n";
+    stream << "      New-Item -ItemType Directory -Path (Split-Path $backupPath) -Force | Out-Null\r\n";
+    stream << "      Copy-Item -LiteralPath $targetPath -Destination $backupPath -Force -ErrorAction Stop\r\n";
+    stream << "    } else { [void]$newFiles.Add($targetPath) }\r\n";
+    stream << "  }\r\n";
+    stream << "  Copy-Item -Path (Join-Path $sourceDir '*') -Destination $appDir -Recurse -Force -ErrorAction Stop\r\n";
+    stream << "  if (-not (Test-Path -LiteralPath $appExe)) { throw 'Updated executable is missing.' }\r\n";
+    stream << "  $sourceHash = (Get-FileHash -LiteralPath $sourceExe -Algorithm SHA256).Hash\r\n";
+    stream << "  $installedHash = (Get-FileHash -LiteralPath $appExe -Algorithm SHA256).Hash\r\n";
+    stream << "  if ($sourceHash -ne $installedHash) { throw 'Updated executable verification failed.' }\r\n";
+    stream << "  Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue\r\n";
+    stream << "  Remove-Item -LiteralPath $stagingDir -Recurse -Force -ErrorAction SilentlyContinue\r\n";
+    stream << "  Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue\r\n";
+    stream << "  Start-Process -FilePath $appExe -WorkingDirectory $appDir\r\n";
+    stream << "} catch {\r\n";
+    stream << "  Set-Content -LiteralPath $failureLog -Value $_.Exception.ToString()\r\n";
+    stream << "  foreach ($newFile in $newFiles) { Remove-Item -LiteralPath $newFile -Force -ErrorAction SilentlyContinue }\r\n";
+    stream << "  if (Test-Path -LiteralPath $backupDir) { Copy-Item -Path (Join-Path $backupDir '*') -Destination $appDir -Recurse -Force -ErrorAction SilentlyContinue }\r\n";
+    stream << "  Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue\r\n";
+    stream << "  if (Test-Path -LiteralPath $appExe) { Start-Process -FilePath $appExe -WorkingDirectory $appDir -ArgumentList '--update-failed' }\r\n";
+    stream << "}\r\n";
+    stream << "Start-Sleep -Milliseconds 500\r\n";
+    stream << "Remove-Item -LiteralPath $updaterPath -Force -ErrorAction SilentlyContinue\r\n";
+    updaterFile.close();
+
+    qDebug() << "Created update helper:" << updaterPath;
+    const bool started = QProcess::startDetached(
+        "powershell.exe",
+        {"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+         "-WindowStyle", "Hidden", "-File", QDir::toNativeSeparators(updaterPath)});
+    if (!started)
+        qWarning() << "Failed to start update helper";
+    return started;
 }
