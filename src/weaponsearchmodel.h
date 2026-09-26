@@ -18,6 +18,7 @@ class WeaponSearchModel : public QAbstractListModel
     Q_PROPERTY(bool openInPWA READ openInPWA WRITE setOpenInPWA NOTIFY openInPWAChanged)
     Q_PROPERTY(QStringList activeSourceFilters READ activeSourceFilters NOTIFY activeSourceFiltersChanged)
     Q_PROPERTY(QVariantList activeTraitFilters READ activeTraitFilters NOTIFY activeTraitFiltersChanged)
+    Q_PROPERTY(QVariantList activeBreakerFilters READ activeBreakerFilters NOTIFY activeBreakerFiltersChanged)
 
 public:
     enum WeaponRoles {
@@ -38,7 +39,16 @@ public:
         IconWatermarkRole,
         IsTier3WeaponRole,
         IsTier5WeaponRole,
-        TierTypeNameRole
+        TierTypeNameRole,
+        HasAcceleratedAssaultRole,
+        AntiChampionTypeRole,
+        HasAntiChampionRole,
+        AntiChampionLabelRole,
+        AntiChampionDisplayNameRole,
+        AntiChampionIconRole,
+        AntiChampionDescriptionRole,
+        AntiChampionSlugRole,
+        AntiChampionOrderRole
     };
 
     explicit WeaponSearchModel(QObject *parent = nullptr);
@@ -61,10 +71,11 @@ public:
 
     QStringList activeSourceFilters() const { return m_activeSourceFilters; }
     QVariantList activeTraitFilters() const { return m_activeTraitFilters; }
+    QVariantList activeBreakerFilters() const { return m_activeBreakerFilters; }
 
     void setWeapons(const QJsonArray &weapons);
 
-    Q_INVOKABLE void openWeapon(int index);
+    Q_INVOKABLE void openWeapon(int index, bool forceBrowser);
     Q_INVOKABLE void clearSearch();
 
 signals:
@@ -74,6 +85,7 @@ signals:
     void openInPWAChanged();
     void activeSourceFiltersChanged();
     void activeTraitFiltersChanged();
+    void activeBreakerFiltersChanged();
     void weaponsLoaded();
 
 private:
@@ -93,6 +105,7 @@ private:
     void buildTraitList();  // Build unique trait list from all weapons
     QString findBestTraitMatch(const QString &partial) const;  // Fuzzy match trait name
     int getTraitColumn(const QString &traitName, const QJsonObject &weapon) const;  // Get column number for trait
+    bool weaponHasTrait(const QJsonObject &weapon, const QString &traitName) const;
 
     QJsonArray m_allWeapons;
     QJsonArray m_filteredWeapons;
@@ -103,6 +116,7 @@ private:
     bool m_openInPWA = true;      // Open links in Chrome PWA mode (default: true)
     QStringList m_activeSourceFilters;  // Currently active source filter display names
     QVariantList m_activeTraitFilters;  // Currently active trait filters [{name: "Firefly", column: 3}, ...]
+    QVariantList m_activeBreakerFilters; // Active -b filters using centralized presentation data
     QStringList m_allTraits;  // All unique trait names from weapons
 };
 

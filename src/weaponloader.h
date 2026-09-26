@@ -18,6 +18,8 @@ public:
 
     void loadWeapons(std::function<void(const QJsonArray&)> callback,
                      int maxRetries = 3);
+
+    static bool hasCurrentAntiChampionSchema(const QJsonArray &weapons);
     
     // QML-callable reload method
     Q_INVOKABLE void reload();
@@ -35,13 +37,14 @@ private slots:
 private:
     void startRequest();
     void cleanupCurrentRequest();
-
     QNetworkAccessManager *m_networkManager;
     std::function<void(const QJsonArray&)> m_callback;
     QNetworkReply *m_currentReply;
     QTimer *m_timeoutTimer;
     int m_retryCount;
     int m_maxRetries;
+    bool m_forceFreshRequest = false;
+    bool m_schemaRefreshAttempted = false;
     static const int MAX_RETRIES = 3;
     static const int TIMEOUT_MS = 15000; // 15 seconds
 

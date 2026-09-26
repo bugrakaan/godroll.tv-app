@@ -128,8 +128,7 @@ Window {
                 root.forceShowWindow()
             }
             // Show the update success notification
-            updateSuccessNotification.newVersion = version
-            updateSuccessNotification.visible = true
+            updateSuccessNotification.showNotification(version)
         }
     }
 
@@ -318,7 +317,7 @@ Window {
         id: updateDialogOverlay
         anchors.fill: parent
         color: "transparent"
-        visible: updateDialog.visible || shortcutDialog.visible
+        visible: updateDialog.visible || shortcutDialog.visible || updateSuccessNotification.visible
         z: 99
         
         MouseArea {
@@ -360,6 +359,7 @@ Window {
     Rectangle {
         id: updateSuccessNotification
         property string newVersion: ""
+        property bool closing: false
         
         anchors.centerIn: parent
         width: 350
@@ -367,7 +367,41 @@ Window {
         radius: 14
         color: "#1a1a1a"
         visible: false
+        opacity: 0
+        scale: 0.97
+        transformOrigin: Item.Center
         z: 100
+
+        function showNotification(version) {
+            newVersion = version
+            closing = false
+            visible = true
+            successOpenAnimation.restart()
+        }
+
+        function dismiss() {
+            if (!visible || closing)
+                return
+            closing = true
+            successCloseAnimation.restart()
+        }
+
+        ParallelAnimation {
+            id: successOpenAnimation
+            NumberAnimation { target: updateSuccessNotification; property: "opacity"; from: 0; to: 1; duration: 150; easing.type: Easing.OutCubic }
+            NumberAnimation { target: updateSuccessNotification; property: "scale"; from: 0.97; to: 1; duration: 180; easing.type: Easing.OutBack }
+        }
+
+        ParallelAnimation {
+            id: successCloseAnimation
+            NumberAnimation { target: updateSuccessNotification; property: "opacity"; to: 0; duration: 110; easing.type: Easing.InCubic }
+            NumberAnimation { target: updateSuccessNotification; property: "scale"; to: 0.98; duration: 110; easing.type: Easing.InCubic }
+            onFinished: {
+                updateSuccessNotification.visible = false
+                updateSuccessNotification.closing = false
+                updateChecker.clearUpdateNotification()
+            }
+        }
         
         ColumnLayout {
             id: successColumn
@@ -423,6 +457,10 @@ Window {
                 Layout.topMargin: 8
                 color: successOkMouse.containsMouse ? "#0bc5bf" : "#09d7d0"
                 radius: 8
+                scale: successOkMouse.pressed ? 0.98 : 1
+
+                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
                 
                 Text {
                     anchors.centerIn: parent
@@ -438,10 +476,7 @@ Window {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        updateSuccessNotification.visible = false
-                        updateChecker.clearUpdateNotification()
-                    }
+                    onClicked: updateSuccessNotification.dismiss()
                 }
             }
         }

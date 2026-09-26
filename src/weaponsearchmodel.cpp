@@ -1,7 +1,9 @@
 #include "weaponsearchmodel.h"
 #include "perkaliases.h"
+#include "championpresentation.h"
 #include <QDesktopServices>
 #include <QUrl>
+#include <QUrlQuery>
 #include <QSettings>
 #include <QRegularExpression>
 #include <QProcess>
@@ -34,6 +36,12 @@ QVariant WeaponSearchModel::data(const QModelIndex &index, int role) const
         return QVariant();
 
     QJsonObject weapon = m_filteredWeapons[index.row()].toObject();
+    const QJsonValue antiChampionValue = weapon["antiChampionType"];
+    const QString antiChampionType = antiChampionValue.isString()
+        ? antiChampionValue.toString()
+        : QString();
+    const ChampionPresentation::Definition antiChampion =
+        ChampionPresentation::forType(antiChampionType);
 
     switch (role) {
     case NameRole:
@@ -72,6 +80,24 @@ QVariant WeaponSearchModel::data(const QModelIndex &index, int role) const
         return weapon["isTier5Weapon"].toBool();
     case TierTypeNameRole:
         return weapon["tierTypeName"].toString();
+    case HasAcceleratedAssaultRole:
+        return weaponHasTrait(weapon, "Accelerated Assault");
+    case AntiChampionTypeRole:
+        return antiChampionValue.toVariant();
+    case HasAntiChampionRole:
+        return antiChampion.isValid();
+    case AntiChampionLabelRole:
+        return antiChampion.label;
+    case AntiChampionDisplayNameRole:
+        return antiChampion.displayName;
+    case AntiChampionIconRole:
+        return antiChampion.icon;
+    case AntiChampionDescriptionRole:
+        return antiChampion.description;
+    case AntiChampionSlugRole:
+        return antiChampion.slug;
+    case AntiChampionOrderRole:
+        return antiChampion.order;
     default:
         return QVariant();
     }
@@ -98,6 +124,15 @@ QHash<int, QByteArray> WeaponSearchModel::roleNames() const
     roles[IsTier3WeaponRole] = "isTier3Weapon";
     roles[IsTier5WeaponRole] = "isTier5Weapon";
     roles[TierTypeNameRole] = "tierTypeName";
+    roles[HasAcceleratedAssaultRole] = "hasAcceleratedAssault";
+    roles[AntiChampionTypeRole] = "antiChampionType";
+    roles[HasAntiChampionRole] = "hasAntiChampion";
+    roles[AntiChampionLabelRole] = "antiChampionLabel";
+    roles[AntiChampionDisplayNameRole] = "antiChampionDisplayName";
+    roles[AntiChampionIconRole] = "antiChampionIcon";
+    roles[AntiChampionDescriptionRole] = "antiChampionDescription";
+    roles[AntiChampionSlugRole] = "antiChampionSlug";
+    roles[AntiChampionOrderRole] = "antiChampionOrder";
     return roles;
 }
 
@@ -263,6 +298,24 @@ int WeaponSearchModel::getTraitColumn(const QString &traitName, const QJsonObjec
     return -1;
 }
 
+bool WeaponSearchModel::weaponHasTrait(const QJsonObject &weapon, const QString &traitName) const
+{
+    for (const QJsonValue &originVal : weapon["originTraits"].toArray()) {
+        if (originVal.toString().compare(traitName, Qt::CaseInsensitive) == 0)
+            return true;
+    }
+
+    const QJsonObject perkColumns = weapon["perkColumns"].toObject();
+    for (const QString &columnKey : perkColumns.keys()) {
+        for (const QJsonValue &perkVal : perkColumns[columnKey].toArray()) {
+            if (perkVal.toString().compare(traitName, Qt::CaseInsensitive) == 0)
+                return true;
+        }
+    }
+
+    return false;
+}
+
 // Helper: Get base weapon name by removing parenthetical suffixes like (Adept), (Harrowed), (Timelost)
 QString WeaponSearchModel::getBaseWeaponName(const QString &name) const
 {
@@ -305,6 +358,8 @@ void WeaponSearchModel::filterWeapons()
     bool craftableOnly = false;   // -c flag: show only craftable weapons
     QStringList sourceFilters;    // -s flag: filter by source (e.g., -s gambit, -s vog)
     QList<QPair<QString, int>> traitFilters;  // -t flag: filter by traits with column index
+    QStringList breakerFilters;   // -b flag: barrier, overload, or unstoppable
+    bool invalidBreakerFilter = false;
     QString damageTypeFilter;     // Damage type filter: solar, arc, void, stasis, strand, kinetic
     QString ammoTypeFilter;       // Ammo type filter: primary, special, heavy
     
@@ -412,9 +467,9 @@ void WeaponSearchModel::filterWeapons()
                 QString flagChars = part.mid(1);
                 bool isFlag = true;
                 
-                // Check if all characters are valid flag chars or if it's -s
-                if (flagChars == "s" || part.startsWith("-s ")) {
-                    // Source flag - add back to query with everything after it
+                // Source and breaker filters consume a following value. Add
+                // the remaining query back so their dedicated parsers handle it.
+                if (flagChars == "s" || flagChars == "b") {
                     int idx = unquotedParts.indexOf(part);
                     for (int i = idx; i < unquotedParts.size(); ++i) {
                         flagsToAddBack.append(unquotedParts[i]);
@@ -447,8 +502,34 @@ void WeaponSearchModel::filterWeapons()
             }
         }
         
-        // Now parts contains both quoted (full phrases) and unquoted terms
-        traitTerms = parts;
+        // Resolve unquoted multi-word trait names greedily. This keeps
+        // "-t firefly headstone" as two traits, while treating
+        // "-t accelerated assault" or "-t kill clip" as one exact trait.
+        QStringList resolvedTerms;
+        for (int i = 0; i < parts.size();) {
+            QString exactPhrase;
+            int consumed = 0;
+
+            for (int length = parts.size() - i; length >= 2 && exactPhrase.isEmpty(); --length) {
+                const QString candidate = parts.mid(i, length).join(' ');
+                for (const QString &trait : m_allTraits) {
+                    if (trait.compare(candidate, Qt::CaseInsensitive) == 0) {
+                        exactPhrase = trait;
+                        consumed = length;
+                        break;
+                    }
+                }
+            }
+
+            if (!exactPhrase.isEmpty()) {
+                resolvedTerms.append(exactPhrase);
+                i += consumed;
+            } else {
+                resolvedTerms.append(parts[i]);
+                ++i;
+            }
+        }
+        traitTerms = resolvedTerms;
         
         // Add back any flags that were after -t
         if (!flagsToAddBack.isEmpty()) {
@@ -456,7 +537,29 @@ void WeaponSearchModel::filterWeapons()
             queryLower = queryLower.trimmed();
         }
     }
-    
+
+    // Parse anti-champion filters. Multiple -b filters are treated as OR and
+    // kept in the presentation order defined by ChampionPresentation.
+    QRegularExpression breakerPattern("(^|\\s)-b(?:\\s+(\\S+))?(?=\\s|$)",
+                                      QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator breakerMatches = breakerPattern.globalMatch(queryLower);
+    while (breakerMatches.hasNext()) {
+        const QRegularExpressionMatch match = breakerMatches.next();
+        const QString requestedType = match.captured(2).toLower();
+        const ChampionPresentation::Definition presentation =
+            ChampionPresentation::forFilterPrefix(requestedType);
+        if (!presentation.isValid()) {
+            invalidBreakerFilter = true;
+            continue;
+        }
+        if (!breakerFilters.contains(presentation.type))
+            breakerFilters.append(presentation.type);
+    }
+    queryLower = queryLower.remove(breakerPattern).simplified();
+    std::sort(breakerFilters.begin(), breakerFilters.end(), [](const QString &a, const QString &b) {
+        return ChampionPresentation::orderForType(a) < ChampionPresentation::orderForType(b);
+    });
+
     // Match partial trait names to full trait names (max 4 traits)
     const int MAX_TRAIT_FILTERS = 4;
     for (const QString &term : traitTerms) {
@@ -661,6 +764,16 @@ void WeaponSearchModel::filterWeapons()
         m_activeTraitFilters = traitFiltersList;
         emit activeTraitFiltersChanged();
     }
+
+    QVariantList breakerFiltersList;
+    for (const QString &type : breakerFilters) {
+        breakerFiltersList.append(
+            ChampionPresentation::toVariantMap(ChampionPresentation::forType(type)));
+    }
+    if (m_activeBreakerFilters != breakerFiltersList) {
+        m_activeBreakerFilters = breakerFiltersList;
+        emit activeBreakerFiltersChanged();
+    }
     
     // Helper lambda to check if a weapon matches the source filters
     // Uses the same priority logic: exact > starts-with > contains
@@ -737,13 +850,25 @@ void WeaponSearchModel::filterWeapons()
         return true;
     };
 
+    auto matchesBreakerFilter = [&breakerFilters, invalidBreakerFilter](const QJsonObject &weapon) -> bool {
+        if (invalidBreakerFilter)
+            return false;
+        if (breakerFilters.isEmpty())
+            return true;
+
+        const QJsonValue value = weapon["antiChampionType"];
+        return value.isString() && breakerFilters.contains(value.toString());
+    };
+
     // If query is empty (after removing flags), show latest season weapons with filters applied
     // The -* flag allows showing ALL weapons (not just latest season)
     // Filter flags (-h, -a, -e) when used alone should search ALL weapons
     // -! (unique) alone still shows latest season only
     bool hasFilterFlags = holofoilOnly || adeptOnly || exoticOnly || craftableOnly;
     bool hasDamageOrAmmoFilter = !damageTypeFilter.isEmpty() || !ammoTypeFilter.isEmpty() || !equipmentSlotFilter.isEmpty();
-    bool showAllWeapons = noLimit || !sourceFilters.isEmpty() || !traitFilters.isEmpty() || hasFilterFlags || hasDamageOrAmmoFilter; // -* flag, -s flag, -t flag, damage/ammo type, or filter flags shows all weapons
+    bool hasBreakerFilter = invalidBreakerFilter || !breakerFilters.isEmpty();
+    bool showAllWeapons = noLimit || !sourceFilters.isEmpty() || !traitFilters.isEmpty() ||
+                          hasBreakerFilter || hasFilterFlags || hasDamageOrAmmoFilter;
     
     if (queryLower.isEmpty() && !showAllWeapons) {
         if (!m_showLatestSeason) {
@@ -847,9 +972,24 @@ void WeaponSearchModel::filterWeapons()
                 }
             }
             
-            // Sort alphabetically by name
+            // Keep the backend presentation order even in the default latest-
+            // season view, then sort alphabetically within each breaker group.
             std::sort(latestSeasonWeapons.begin(), latestSeasonWeapons.end(),
-                      [](const auto &a, const auto &b) { return a.first.toLower() < b.first.toLower(); });
+                      [](const auto &a, const auto &b) {
+                          const QJsonObject weaponA = a.second.toObject();
+                          const QJsonObject weaponB = b.second.toObject();
+                          const int championOrderA = ChampionPresentation::orderForType(
+                              weaponA["antiChampionType"].isString()
+                                  ? weaponA["antiChampionType"].toString()
+                                  : QString());
+                          const int championOrderB = ChampionPresentation::orderForType(
+                              weaponB["antiChampionType"].isString()
+                                  ? weaponB["antiChampionType"].toString()
+                                  : QString());
+                          if (championOrderA != championOrderB)
+                              return championOrderA < championOrderB;
+                          return a.first.toLower() < b.first.toLower();
+                      });
             
             m_filteredWeapons = QJsonArray();
             for (const auto &pair : latestSeasonWeapons) {
@@ -969,6 +1109,10 @@ void WeaponSearchModel::filterWeapons()
             // Apply trait filter
             if (!matchesTraitFilter(weapon)) {
                 continue; // Skip weapons that don't match trait filter
+            }
+
+            if (!matchesBreakerFilter(weapon)) {
+                continue;
             }
             
             // Note: uniqueByName filter is applied AFTER sorting to prefer newer season weapons
@@ -1142,7 +1286,7 @@ void WeaponSearchModel::filterWeapons()
         // Exact, prefix, and contiguous substring name matches win in that
         // order. Season then ranks results within the same match tier.
         std::sort(scoredWeapons.begin(), scoredWeapons.end(),
-                  [](const auto &a, const auto &b) {
+                  [this](const auto &a, const auto &b) {
                       const QJsonObject &weaponA = std::get<3>(a);
                       const QJsonObject &weaponB = std::get<3>(b);
 
@@ -1167,12 +1311,34 @@ void WeaponSearchModel::filterWeapons()
                           return seasonA > seasonB;
                       }
 
+                      const QString nameA = std::get<2>(a).toLower();
+                      const QString nameB = std::get<2>(b).toLower();
+                      if (nameA == nameB) {
+                          const bool acceleratedAssaultA =
+                              weaponHasTrait(weaponA, "Accelerated Assault");
+                          const bool acceleratedAssaultB =
+                              weaponHasTrait(weaponB, "Accelerated Assault");
+                          if (acceleratedAssaultA != acceleratedAssaultB) {
+                              return !acceleratedAssaultA;
+                          }
+                      }
+
                       if (fullNameScoreA != fullNameScoreB) {
                           return fullNameScoreA > fullNameScoreB;
                       }
 
-                      QString nameA = std::get<2>(a).toLower();
-                      QString nameB = std::get<2>(b).toLower();
+                      const int championOrderA = ChampionPresentation::orderForType(
+                          weaponA["antiChampionType"].isString()
+                              ? weaponA["antiChampionType"].toString()
+                              : QString());
+                      const int championOrderB = ChampionPresentation::orderForType(
+                          weaponB["antiChampionType"].isString()
+                              ? weaponB["antiChampionType"].toString()
+                              : QString());
+                      if (championOrderA != championOrderB) {
+                          return championOrderA < championOrderB;
+                      }
+
                       if (nameA != nameB) {
                           return nameA < nameB;
                       }
@@ -1189,7 +1355,11 @@ void WeaponSearchModel::filterWeapons()
         // - holofoilOnly, uniqueByName, adeptOnly, or exoticOnly with no other search: no limit
         // - Otherwise: limit to 50
         m_filteredWeapons = QJsonArray();
-        bool shouldRemoveLimit = noLimit || isSeasonSearch || isIdSearch || !sourceFilters.isEmpty() || !traitFilters.isEmpty() || hasDamageOrAmmoFilter || ((holofoilOnly || uniqueByName || adeptOnly || exoticOnly || craftableOnly) && searchTerms.isEmpty());
+        bool shouldRemoveLimit = noLimit || isSeasonSearch || isIdSearch ||
+                                 !sourceFilters.isEmpty() || !traitFilters.isEmpty() ||
+                                 hasBreakerFilter || hasDamageOrAmmoFilter ||
+                                 ((holofoilOnly || uniqueByName || adeptOnly || exoticOnly || craftableOnly) &&
+                                  searchTerms.isEmpty());
         int maxResults = shouldRemoveLimit ? scoredWeapons.size() : qMin(50, static_cast<int>(scoredWeapons.size()));
         
         // Apply uniqueByName filter AFTER sorting - this ensures newer season weapons are preferred
@@ -1414,7 +1584,7 @@ int WeaponSearchModel::fuzzyScore(const QString &text, const QString &query) con
     return static_cast<int>(fuseScore * 1000);
 }
 
-void WeaponSearchModel::openWeapon(int index)
+void WeaponSearchModel::openWeapon(int index, bool forceBrowser)
 {
     if (index < 0 || index >= m_filteredWeapons.size())
         return;
@@ -1422,12 +1592,13 @@ void WeaponSearchModel::openWeapon(int index)
     QJsonObject weapon = m_filteredWeapons[index].toObject();
     QString hash = weapon["hash"].toVariant().toString();
     
-    // grtv.app is the launcher redirect domain. It keeps tracking out of the
-    // destination URL while preserving the weapon path.
-    const QUrl redirectUrl(QString("https://grtv.app/%1").arg(hash));
-    const QString url = redirectUrl.toString(QUrl::FullyEncoded);
+    QUrl weaponUrl(QString("https://godroll.tv/%1").arg(hash));
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("source"), QStringLiteral("app"));
+    weaponUrl.setQuery(query);
+    const QString url = weaponUrl.toString(QUrl::FullyEncoded);
     
-    bool useChromeAppMode = m_openInPWA;
+    bool useChromeAppMode = m_openInPWA && !forceBrowser;
 
 #ifdef Q_OS_WIN
     // App mode is Chrome-specific. Respect the user's browser choice instead
@@ -1439,11 +1610,12 @@ void WeaponSearchModel::openWeapon(int index)
         const QString browserProgId = defaultBrowser.value("ProgId").toString();
         useChromeAppMode = browserProgId.startsWith("ChromeHTML", Qt::CaseInsensitive);
     }
+
 #endif
 
     // Non-Chrome defaults and disabled PWA mode use the system browser.
     if (!useChromeAppMode) {
-        QDesktopServices::openUrl(redirectUrl);
+        QDesktopServices::openUrl(weaponUrl);
         return;
     }
     
@@ -1473,7 +1645,7 @@ void WeaponSearchModel::openWeapon(int index)
 
     // Chrome may be absent or fail to launch; always fall back to the user's
     // configured default browser instead of dropping the request.
-    QDesktopServices::openUrl(redirectUrl);
+    QDesktopServices::openUrl(weaponUrl);
 }
 
 void WeaponSearchModel::clearSearch()

@@ -9,12 +9,16 @@ Rectangle {
     radius: 14
     color: "#1a1a1a"
     visible: false
+    opacity: 0
+    scale: 0.97
+    transformOrigin: Item.Center
 
     property string mainFont: "Space Grotesk"
     property bool unavailableMode: false
     property string selectedShortcut: ""
     property bool selectionValid: false
     property string validationMessage: ""
+    property bool closing: false
     signal closed()
 
     function validateSelection() {
@@ -29,12 +33,13 @@ Rectangle {
     }
 
     function openDialog(isUnavailable) {
+        closing = false
         unavailableMode = isUnavailable
         hotkey.suspendForShortcutCapture()
         selectedShortcut = hotkey.shortcutText
         validateSelection()
         visible = true
-        opacity = 1
+        openAnimation.restart()
         Qt.callLater(function() { shortcutField.forceActiveFocus() })
     }
 
@@ -43,9 +48,28 @@ Rectangle {
     }
 
     function closeDialog() {
-        visible = false
-        hotkey.resumeAfterShortcutCapture()
-        closed()
+        if (!visible || closing)
+            return
+        closing = true
+        closeAnimation.restart()
+    }
+
+    ParallelAnimation {
+        id: openAnimation
+        NumberAnimation { target: shortcutDialog; property: "opacity"; from: 0; to: 1; duration: 150; easing.type: Easing.OutCubic }
+        NumberAnimation { target: shortcutDialog; property: "scale"; from: 0.97; to: 1; duration: 180; easing.type: Easing.OutBack }
+    }
+
+    ParallelAnimation {
+        id: closeAnimation
+        NumberAnimation { target: shortcutDialog; property: "opacity"; to: 0; duration: 110; easing.type: Easing.InCubic }
+        NumberAnimation { target: shortcutDialog; property: "scale"; to: 0.98; duration: 110; easing.type: Easing.InCubic }
+        onFinished: {
+            shortcutDialog.visible = false
+            shortcutDialog.closing = false
+            hotkey.resumeAfterShortcutCapture()
+            shortcutDialog.closed()
+        }
     }
 
     ColumnLayout {
@@ -87,7 +111,7 @@ Rectangle {
                     Layout.fillWidth: true
                     text: shortcutDialog.unavailableMode
                         ? "Your saved shortcut is already being used. You can choose a new one below."
-                        : "Choose the shortcut that toggles Godroll TV."
+                        : "Choose the shortcut that toggles Godroll.tv Launcher."
                     font.family: shortcutDialog.mainFont
                     font.pixelSize: 13
                     color: "#aaaaaa"
@@ -120,6 +144,8 @@ Rectangle {
                 border.color: shortcutField.activeFocus
                     ? (shortcutDialog.selectionValid ? "#09d7d0" : "#ef6464")
                     : "#3a3a3a"
+
+                Behavior on border.color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
             }
 
             Keys.onPressed: function(event) {
@@ -149,6 +175,8 @@ Rectangle {
             font.pixelSize: 12
             color: shortcutDialog.selectionValid ? "#09d7d0" : "#ef6464"
             wrapMode: Text.WordWrap
+
+            Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
         }
 
         Text {
@@ -175,6 +203,12 @@ Rectangle {
                 border.color: activeFocus ? "#09d7d0" : "#555555"
                 border.width: activeFocus ? 2 : 1
                 radius: 8
+                scale: cancelMouse.pressed ? 0.98 : 1
+
+                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                Behavior on border.color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                Behavior on border.width { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
 
                 Keys.onEscapePressed: shortcutDialog.closeDialog()
                 Keys.onReturnPressed: shortcutDialog.closeDialog()
@@ -209,6 +243,12 @@ Rectangle {
                 border.width: activeFocus ? 2 : 0
                 border.color: activeFocus ? "white" : "transparent"
                 radius: 8
+                scale: saveMouse.pressed && shortcutDialog.selectionValid ? 0.98 : 1
+
+                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                Behavior on border.color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                Behavior on border.width { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
 
                 function saveShortcut() {
                     if (hotkey.setShortcut(shortcutDialog.selectedShortcut)) {
@@ -230,6 +270,8 @@ Rectangle {
                     font.pixelSize: 14
                     font.weight: Font.Bold
                     color: shortcutDialog.selectionValid ? "#1a1a1a" : "#888888"
+
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
                 }
 
                 MouseArea {
@@ -245,6 +287,7 @@ Rectangle {
     }
 
     Rectangle {
+        id: closeButton
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.margins: 8
@@ -252,12 +295,18 @@ Rectangle {
         height: 28
         radius: 14
         color: closeMouse.containsMouse ? "#333333" : "transparent"
+        scale: closeMouse.pressed ? 0.92 : 1
+
+        Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
 
         Text {
             anchors.centerIn: parent
             text: "✕"
             font.pixelSize: 14
             color: closeMouse.containsMouse ? "white" : "#666666"
+
+            Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
         }
 
         MouseArea {

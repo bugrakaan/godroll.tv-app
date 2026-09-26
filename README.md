@@ -45,7 +45,8 @@ Common community shorthand is supported for trait search:
 ### Keyboard Shortcuts
 - **`Alt + G`** - Toggle launcher (works globally)
 - **`↑` / `↓`** - Navigate results
-- **`Enter`** - Open selected weapon on godroll.tv
+- **`Enter`** - Open selected weapon on Godroll.tv
+- **`Ctrl + Enter` / `Ctrl + click`** - Open in the normal browser instead of app mode
 - **`Middle-click`** - Open weapon without closing launcher
 - **`ESC`** - Close launcher or clear search
 - **`F5`** - Reload weapon data
@@ -135,6 +136,16 @@ energy 140 hc            -> 140 RPM Hand Cannons in the Energy slot
 exotic hand cannon    → Exotic Hand Cannons
 ```
 
+**Anti-Champion Filter**
+```
+-b barrier            → Weapons that counter Barrier Champions
+-b overload           → Weapons that counter Overload Champions
+-b unstoppable        → Weapons that counter Unstoppable Champions
+-b barrier -b overload → Barrier or Overload countering weapons
+```
+
+The breaker value resolves from its first unique letter, so `-b b`, `-b o`, and `-b u` work while typing. Anti-champion capabilities come directly from Godroll.tv. The launcher does not infer them from weapon type, frame, hash, or exotic status.
+
 **Source Filter**
 ```
 -s se                 → Salvation's Edge weapons
@@ -166,7 +177,8 @@ arc special           → Arc Special weapons
 
 ### System Tray
 - Left-click to show/hide launcher
-- Right-click for options menu (auto-start, exit)
+- Right-click for launcher controls with short hover descriptions
+- Use **Prefer PWA Mode** to permanently choose app-style windows or the normal browser
 
 ## Troubleshooting
 

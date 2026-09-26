@@ -41,6 +41,7 @@ set(HEADERS
     src/weaponloader.h
     src/trayicon.h
     src/seasonmapping.h
+    src/championpresentation.h
     src/updatechecker.h
     src/manifestchecker.h
 )
@@ -73,6 +74,10 @@ qt_add_qml_module(GodrollLauncher
     RESOURCES
         resources/logo.svg
         resources/search-icon.svg
+        resources/accelerated-assault.png
+        resources/champion-barrier.svg
+        resources/champion-overload.svg
+        resources/champion-unstoppable.svg
         resources/fonts/SpaceGrotesk.ttf
 )
 
@@ -83,6 +88,28 @@ target_link_libraries(GodrollLauncher PRIVATE
     Qt6::Widgets
     Qt6::Concurrent
 )
+
+include(CTest)
+if(BUILD_TESTING)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+
+    qt_add_executable(GodrollLauncherTests
+        tests/anti_champion_tests.cpp
+        src/weaponsearchmodel.cpp
+        src/weaponsearchmodel.h
+        src/weaponloader.cpp
+        src/weaponloader.h
+        src/championpresentation.h
+    )
+    target_include_directories(GodrollLauncherTests PRIVATE src)
+    target_link_libraries(GodrollLauncherTests PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Network
+        Qt6::Test
+    )
+    add_test(NAME anti_champion_contract COMMAND GodrollLauncherTests)
+endif()
 
 # macOS specific - link Carbon framework for global hotkeys
 if(APPLE)

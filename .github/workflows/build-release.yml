@@ -149,9 +149,10 @@ jobs:
           ## Godroll Launcher v${{ steps.new_version.outputs.NEW_VERSION }}
 
           ### Changes in This Version
-          - Updates are now verified before installation and safely restore the previous version if something goes wrong
-          - The update screen now provides clearer progress and error feedback
-          - Weapon links now open reliably in the user's preferred browser
+          - Anti-Champion icons now show whether a weapon counters Barrier, Overload, or Unstoppable Champions
+          - Use `-b` with any starting part of a Champion type, such as `-b b`, `-b ove`, or `-b uns`, to filter weapons
+          - Accelerated Assault icons have been added to weapon results
+          - Use `Prefer PWA Mode` in the tray menu to choose between app-style windows and browser tabs
           
           ### Search Features
           - **Flag modifiers**: `-!` (unique), `-*` (all), `-h` (holofoil), `-a` (adept), `-e` (exotic), `-c` (craftable)
@@ -175,12 +176,15 @@ jobs:
           ### Launcher & Window
           - A startup screen shows boot progress and automatically retries if the launcher cannot start
           - The system tray menu includes a dedicated `Show` action to bring the launcher into view
+          - Weapon links open reliably in the user's preferred browser
           
           ### Auto-Updater
           - Automatic update check on startup
           - Manual "Check for Updates" from system tray menu
           - One-click download and automatic installation
           - Shows current version in tray tooltip
+          - Downloads are verified before installation and the previous version is restored if an update fails
+          - The update screen provides clear progress and error feedback
           
           ### Auto Refresh
           - Automatically checks for weapon database updates when app comes to foreground

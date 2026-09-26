@@ -16,6 +16,10 @@
 #include <QKeySequenceEdit>
 #include <QLabel>
 #include <QPushButton>
+#include <QCursor>
+#include <QTimer>
+#include <QToolTip>
+#include <QScreen>
 #include <QVBoxLayout>
 #include <QWindow>
 
@@ -77,6 +81,8 @@ TrayIcon::TrayIcon(QObject *parent)
     : QObject(parent)
     , m_trayIcon(new QSystemTrayIcon(this))
     , m_menu(new QMenu())
+    , m_tooltipTimer(new QTimer(this))
+    , m_menuTooltip(new QLabel(nullptr, Qt::ToolTip | Qt::FramelessWindowHint))
 {
     // Set icon - use the app logo
     QIcon appIcon(":/qt/qml/GodrollLauncher/resources/logo.svg");
@@ -112,26 +118,41 @@ TrayIcon::TrayIcon(QObject *parent)
 
     // Create menu actions
     m_showAction = new QAction("Show", this);
+    m_showAction->setToolTip("Bring Godroll.tv Launcher to the foreground.");
     connect(m_showAction, &QAction::triggered, this, &TrayIcon::forceShowRequested);
 
     m_startupAction = new QAction("Start at Login", this);
     m_startupAction->setCheckable(true);
     m_startupAction->setChecked(isStartupEnabled());
+    m_startupAction->setToolTip("Launch Godroll.tv Launcher automatically when you sign in.");
     connect(m_startupAction, &QAction::toggled, this, &TrayIcon::onStartupToggled);
 
     m_autoRefreshAction = new QAction("Auto Refresh Weapon List", this);
     m_autoRefreshAction->setCheckable(true);
     QSettings autoRefreshSettings("Godroll.tv", "GodrollLauncher");
     m_autoRefreshAction->setChecked(autoRefreshSettings.value("autoRefreshWeapons", true).toBool());
+    m_autoRefreshAction->setToolTip("Refresh weapon data automatically when Godroll.tv changes.");
     connect(m_autoRefreshAction, &QAction::toggled, this, &TrayIcon::autoRefreshToggled);
 
+    m_preferPwaAction = new QAction("Prefer PWA Mode", this);
+    m_preferPwaAction->setCheckable(true);
+    QSettings launcherSettings("Godroll.tv", "GodrollLauncher");
+    m_preferPwaAction->setChecked(launcherSettings.value("openInPWA", true).toBool());
+    m_preferPwaAction->setToolTip(
+        "Open weapons in a standalone app-style window when supported.");
+    connect(m_preferPwaAction, &QAction::toggled,
+            this, &TrayIcon::preferPwaModeToggled);
+
     m_hotkeyAction = new QAction("Change Global Shortcut", this);
+    m_hotkeyAction->setToolTip("Choose the global shortcut used to toggle the launcher.");
     connect(m_hotkeyAction, &QAction::triggered, this, &TrayIcon::hotkeyEditorRequested);
 
     m_checkUpdatesAction = new QAction("Check for Updates", this);
+    m_checkUpdatesAction->setToolTip("Check for a newer Godroll.tv Launcher version.");
     connect(m_checkUpdatesAction, &QAction::triggered, this, &TrayIcon::checkForUpdatesRequested);
 
     m_exitAction = new QAction("Exit", this);
+    m_exitAction->setToolTip("Close Godroll.tv Launcher completely.");
     connect(m_exitAction, &QAction::triggered, this, &TrayIcon::exitRequested);
 
     // Build menu
@@ -140,6 +161,7 @@ TrayIcon::TrayIcon(QObject *parent)
     m_menu->addSeparator();
     m_menu->addAction(m_startupAction);
     m_menu->addAction(m_autoRefreshAction);
+    m_menu->addAction(m_preferPwaAction);
     m_menu->addAction(m_hotkeyAction);
     m_menu->addAction(m_checkUpdatesAction);
     m_menu->addSeparator();
@@ -147,13 +169,77 @@ TrayIcon::TrayIcon(QObject *parent)
 
     m_trayIcon->setContextMenu(m_menu);
 
+    // Position the tooltip ourselves: QToolTip adds a platform-dependent
+    // cursor offset that can place it below the hovered menu item.
+    m_menuTooltip->setAttribute(Qt::WA_ShowWithoutActivating);
+    m_menuTooltip->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_menuTooltip->setFont(QToolTip::font());
+    m_menuTooltip->setPalette(QToolTip::palette());
+    m_menuTooltip->setBackgroundRole(QPalette::ToolTipBase);
+    m_menuTooltip->setForegroundRole(QPalette::ToolTipText);
+    m_menuTooltip->setAutoFillBackground(true);
+    m_menuTooltip->setFrameStyle(QFrame::Box | QFrame::Plain);
+    m_menuTooltip->setMargin(6);
+    m_menuTooltip->setTextFormat(Qt::PlainText);
+    m_menu->installEventFilter(this);
+
+    m_tooltipTimer->setSingleShot(true);
+    m_tooltipTimer->setInterval(400);
+    connect(m_menu, &QMenu::hovered, this, [this](QAction *action) {
+        m_tooltipTimer->stop();
+        m_menuTooltip->hide();
+        m_hoveredAction = action;
+        if (action && !action->isSeparator() && !action->toolTip().isEmpty())
+            m_tooltipTimer->start();
+    });
+    connect(m_tooltipTimer, &QTimer::timeout, this, [this]() {
+        if (!m_menu->isVisible() || !m_hoveredAction ||
+            m_hoveredAction->toolTip().isEmpty()) {
+            return;
+        }
+        const QPoint cursor = QCursor::pos();
+        if (m_menu->actionAt(m_menu->mapFromGlobal(cursor)) != m_hoveredAction)
+            return;
+
+        m_menuTooltip->setText(m_hoveredAction->toolTip());
+        m_menuTooltip->adjustSize();
+        const QPoint itemTop = m_menu->mapToGlobal(
+            m_menu->actionGeometry(m_hoveredAction).topLeft());
+        QPoint position(cursor.x(), itemTop.y() - m_menuTooltip->height() - 8);
+        if (QScreen *screen = QGuiApplication::screenAt(cursor)) {
+            const QRect available = screen->availableGeometry();
+            position.setX(qBound(available.left(), position.x(),
+                qMax(available.left(), available.right() - m_menuTooltip->width() + 1)));
+            position.setY(qMax(available.top(), position.y()));
+        }
+        m_menuTooltip->move(position);
+        m_menuTooltip->show();
+    });
+    connect(m_menu, &QMenu::aboutToHide, this, [this]() {
+        m_tooltipTimer->stop();
+        m_hoveredAction.clear();
+        m_menuTooltip->hide();
+    });
+
     // Connect tray icon activation
     connect(m_trayIcon, &QSystemTrayIcon::activated, this, &TrayIcon::onActivated);
 }
 
 TrayIcon::~TrayIcon()
 {
+    delete m_menuTooltip;
     delete m_menu;
+}
+
+bool TrayIcon::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_menu && (event->type() == QEvent::Leave ||
+                             event->type() == QEvent::Hide)) {
+        m_tooltipTimer->stop();
+        m_menuTooltip->hide();
+        m_hoveredAction.clear();
+    }
+    return QObject::eventFilter(watched, event);
 }
 
 void TrayIcon::show()
@@ -217,8 +303,14 @@ void TrayIcon::setBootComplete(bool complete)
     m_exitAction->setEnabled(true);
     m_startupAction->setEnabled(complete);
     m_autoRefreshAction->setEnabled(complete);
+    m_preferPwaAction->setEnabled(complete);
     m_hotkeyAction->setEnabled(complete);
     m_checkUpdatesAction->setEnabled(complete);
+}
+
+void TrayIcon::setPreferPwaMode(bool enabled)
+{
+    m_preferPwaAction->setChecked(enabled);
 }
 
 void TrayIcon::onStartupToggled(bool checked)
@@ -308,7 +400,7 @@ void TrayIcon::onChangeHotkeyRequested()
     title->setStyleSheet("color: #ffffff; font-size: 18px; font-weight: 700;");
     layout->addWidget(title);
 
-    auto *description = new QLabel("Press a key combination to toggle Godroll Launcher.");
+    auto *description = new QLabel("Press a key combination to toggle Godroll.tv Launcher.");
     description->setWordWrap(true);
     layout->addWidget(description);
 

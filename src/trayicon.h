@@ -9,6 +9,8 @@
 #include <functional>
 
 class QWindow;
+class QTimer;
+class QLabel;
 
 class TrayIcon : public QObject
 {
@@ -26,6 +28,7 @@ public:
     void setHotkeyValidator(const std::function<bool(const QString &, QString &)> &validator);
     void setMainWindow(QWindow *window);
     void setBootComplete(bool complete);
+    void setPreferPwaMode(bool enabled);
     bool isBootComplete() const { return m_bootComplete; }
 
 signals:
@@ -34,6 +37,7 @@ signals:
     void exitRequested();
     void checkForUpdatesRequested();
     void autoRefreshToggled(bool checked);
+    void preferPwaModeToggled(bool checked);
     void hotkeyChangeRequested(const QString &shortcut);
     void hotkeyEditorRequested();
     void hotkeyEditingStarted();
@@ -45,6 +49,7 @@ private slots:
     void onChangeHotkeyRequested();
 
 private:
+    bool eventFilter(QObject *watched, QEvent *event) override;
     bool isStartupEnabled() const;
     void setStartupEnabled(bool enabled);
     QString getExecutablePath() const;
@@ -55,9 +60,13 @@ private:
     QAction *m_showAction;
     QAction *m_startupAction;
     QAction *m_autoRefreshAction;
+    QAction *m_preferPwaAction;
     QAction *m_hotkeyAction;
     QAction *m_checkUpdatesAction;
     QAction *m_exitAction;
+    QTimer *m_tooltipTimer;
+    QLabel *m_menuTooltip;
+    QPointer<QAction> m_hoveredAction;
     QString m_currentShortcut;
     bool m_bootComplete = false;
     QPointer<QWindow> m_mainWindow;

@@ -8,12 +8,15 @@ Rectangle {
     height: parent ? parent.height * 0.8 : 420
     radius: 14
     color: "#1a1a1a"
-    
     visible: false
+    opacity: 0
+    scale: 0.97
+    transformOrigin: Item.Center
     
     // Font
     property string mainFont: "Space Grotesk"
     property string errorMessage: ""
+    property bool closing: false
     
     signal accepted()
     signal rejected()
@@ -21,12 +24,32 @@ Rectangle {
     
     function show() {
         errorMessage = ""
+        closing = false
         visible = true
-        opacity = 1
+        openAnimation.restart()
     }
     
     function hide() {
-        visible = false
+        if (!visible || closing)
+            return
+        closing = true
+        closeAnimation.restart()
+    }
+
+    ParallelAnimation {
+        id: openAnimation
+        NumberAnimation { target: updateDialog; property: "opacity"; from: 0; to: 1; duration: 150; easing.type: Easing.OutCubic }
+        NumberAnimation { target: updateDialog; property: "scale"; from: 0.97; to: 1; duration: 180; easing.type: Easing.OutBack }
+    }
+
+    ParallelAnimation {
+        id: closeAnimation
+        NumberAnimation { target: updateDialog; property: "opacity"; to: 0; duration: 110; easing.type: Easing.InCubic }
+        NumberAnimation { target: updateDialog; property: "scale"; to: 0.98; duration: 110; easing.type: Easing.InCubic }
+        onFinished: {
+            updateDialog.visible = false
+            updateDialog.closing = false
+        }
     }
 
     Connections {
@@ -175,12 +198,17 @@ Rectangle {
             
             // Skip button
             Rectangle {
+                id: skipButton
                 Layout.preferredWidth: 80
                 Layout.preferredHeight: 40
                 color: skipMouse.containsMouse ? "#333333" : "transparent"
                 border.color: "#555555"
                 border.width: 1
                 radius: 8
+                scale: skipMouse.pressed ? 0.98 : 1
+
+                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
                 
                 Text {
                     anchors.centerIn: parent
@@ -207,12 +235,17 @@ Rectangle {
             
             // Later button
             Rectangle {
+                id: laterButton
                 Layout.preferredWidth: 100
                 Layout.preferredHeight: 40
                 color: laterMouse.containsMouse ? "#333333" : "#252525"
                 border.color: "#555555"
                 border.width: 1
                 radius: 8
+                scale: laterMouse.pressed ? 0.98 : 1
+
+                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
                 
                 Text {
                     anchors.centerIn: parent
@@ -242,10 +275,13 @@ Rectangle {
                 color: updateChecker.downloading ? "#666666" : (downloadMouse.containsMouse ? "#0bc5bf" : "#09d7d0")
                 radius: 8
                 clip: true
+                scale: downloadMouse.pressed && !updateChecker.downloading ? 0.98 : 1
                 
                 Behavior on Layout.preferredWidth {
-                    NumberAnimation { duration: 150 }
+                    NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
                 }
+                Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
                 
                 RowLayout {
                     anchors.centerIn: parent
@@ -314,12 +350,17 @@ Rectangle {
             
             // Close button
             Rectangle {
+                id: closeButton
                 Layout.preferredWidth: 100
                 Layout.preferredHeight: 40
                 color: closeBtnMouse.containsMouse ? "#333333" : "#252525"
                 border.color: "#555555"
                 border.width: 1
                 radius: 8
+                scale: closeBtnMouse.pressed ? 0.98 : 1
+
+                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
                 
                 Text {
                     anchors.centerIn: parent
@@ -349,10 +390,13 @@ Rectangle {
                 color: updateChecker.downloading ? "#666666" : (reinstallMouse.containsMouse ? "#0bc5bf" : "#09d7d0")
                 radius: 8
                 clip: true
+                scale: reinstallMouse.pressed && !updateChecker.downloading ? 0.98 : 1
                 
                 Behavior on Layout.preferredWidth {
-                    NumberAnimation { duration: 150 }
+                    NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
                 }
+                Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
                 
                 RowLayout {
                     anchors.centerIn: parent
@@ -414,6 +458,7 @@ Rectangle {
     
     // Close button (X)
     Rectangle {
+        id: closeIconButton
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.margins: 8
@@ -421,12 +466,18 @@ Rectangle {
         height: 28
         radius: 14
         color: closeMouse.containsMouse ? "#333333" : "transparent"
+        scale: closeMouse.pressed ? 0.92 : 1
+
+        Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
         
         Text {
             anchors.centerIn: parent
             text: "✕"
             font.pixelSize: 14
             color: closeMouse.containsMouse ? "white" : "#666666"
+
+            Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
         }
         
         MouseArea {

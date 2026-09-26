@@ -160,7 +160,7 @@ private:
 
 int main(int argc, char *argv[])
 {
-    qDebug() << "Starting Godroll Launcher v" << APP_VERSION;
+    qDebug() << "Starting Godroll.tv Launcher v" << APP_VERSION;
     
     QApplication app(argc, argv);
     app.setApplicationName("Godroll.tv Launcher");
@@ -209,11 +209,11 @@ int main(int argc, char *argv[])
         "Getting things ready...",
         "Preparing your weapon library...",
         "Setting up your keyboard shortcut...",
-        "Adding Godroll TV to the system tray...",
+        "Adding Godroll.tv to the system tray...",
         "Checking app services...",
         "Preparing the launcher...",
         "Loading your weapons...",
-        "Connecting to Godroll TV...",
+        "Connecting to Godroll.tv...",
         "Organizing your weapons..."
     };
     const QString simulatedFailureStage = failBoot
@@ -409,9 +409,9 @@ int main(int argc, char *argv[])
         qWarning() << "Boot retries exhausted:" << reason;
         if (bootSplash) {
             bootSplash->showRetryButton(true,
-                "Godroll TV couldn't start. Check your connection, then try again.");
+                "Godroll.tv couldn't start. Check your connection, then try again.");
         }
-        setBootStage("Godroll TV couldn't start.");
+        setBootStage("Godroll.tv couldn't start.");
         bootWatchdog.stop();
     };
 
@@ -449,7 +449,7 @@ int main(int argc, char *argv[])
     setBootStage("Setting up your keyboard shortcut...");
     GlobalHotkey hotkey;
 
-    setBootStage("Adding Godroll TV to the system tray...");
+    setBootStage("Adding Godroll.tv to the system tray...");
     TrayIcon trayIcon;
 
     setBootStage("Checking app services...");
@@ -498,7 +498,7 @@ int main(int argc, char *argv[])
     if (updateInstallFailed) {
         QTimer::singleShot(1000, &trayIcon, [&trayIcon]() {
             trayIcon.showUpdateError(
-                "Godroll TV kept your previous version. Please try the update again.");
+                "Godroll.tv kept your previous version. Please try the update again.");
         });
     }
 
@@ -518,6 +518,16 @@ int main(int argc, char *argv[])
     // Tray icon auto-refresh toggle syncs with manifest checker
     QObject::connect(&trayIcon, &TrayIcon::autoRefreshToggled,
                      &manifestChecker, &ManifestChecker::setAutoRefresh);
+
+    // Keep the persistent PWA preference synchronized between the tray menu
+    // and the search model that owns URL-opening behavior.
+    QObject::connect(&trayIcon, &TrayIcon::preferPwaModeToggled,
+                     &searchModel, &WeaponSearchModel::setOpenInPWA);
+    QObject::connect(&searchModel, &WeaponSearchModel::openInPWAChanged,
+                     &trayIcon, [&trayIcon, &searchModel]() {
+        trayIcon.setPreferPwaMode(searchModel.openInPWA());
+    });
+    trayIcon.setPreferPwaMode(searchModel.openInPWA());
 
     // Initial manifest check after weapons are first loaded
     QObject::connect(&searchModel, &WeaponSearchModel::weaponsLoaded,
@@ -631,7 +641,7 @@ int main(int argc, char *argv[])
 
             QTimer::singleShot(100, &weaponLoader,
                 [&weaponLoader, &setBootStage, simulatedFailureStageIndex]() {
-                    setBootStage("Connecting to Godroll TV...");
+                    setBootStage("Connecting to Godroll.tv...");
                     if (simulatedFailureStageIndex < 8)
                         return;
 

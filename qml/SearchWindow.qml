@@ -129,7 +129,7 @@ Rectangle {
         anchors.margins: 24
         spacing: 16
 
-        // Logo - Text based GODROLL TV with SVG icon
+        // Godroll.tv wordmark with SVG icon
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: 65
@@ -141,6 +141,11 @@ Rectangle {
                 anchors.centerIn: parent
                 width: logoRow.width
                 height: logoRow.height
+                opacity: logoMouse.containsMouse ? 1 : 0.9
+                scale: logoMouse.pressed ? 0.98 : (logoMouse.containsMouse ? 1.02 : 1)
+
+                Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
                 
                 Row {
                     id: logoRow
@@ -185,11 +190,12 @@ Rectangle {
                 }
                 
                 MouseArea {
+                    id: logoMouse
                     anchors.fill: logoRow
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     
-                    onClicked: Qt.openUrlExternally("https://grtv.app/")
+                    onClicked: Qt.openUrlExternally("https://godroll.tv/?source=app")
                     
                     ToolTip.visible: containsMouse
                     ToolTip.delay: 300
@@ -209,6 +215,8 @@ Rectangle {
             border.width: 2
             clip: true  // Prevent text from overflowing
 
+            Behavior on border.color { ColorAnimation { duration: 150; easing.type: Easing.OutCubic } }
+
             // Search icon
             Image {
                 id: searchIcon
@@ -221,6 +229,8 @@ Rectangle {
                 opacity: isLoading ? 0.3 : 0.5
                 smooth: true
                 mipmap: true
+
+                Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
             }
 
             // Helper function to check if text contains a flag character
@@ -251,8 +261,12 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: badgesRow.width
                 height: badgesRow.height
-                visible: !isLoading && (searchInput.text.length > 0 || searchModel.showLatestSeason)
+                property bool shown: !isLoading && (searchInput.text.length > 0 || searchModel.showLatestSeason)
+                visible: opacity > 0
+                opacity: shown ? 1 : 0
                 z: 10  // Above the input area MouseArea
+
+                Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
                 
                 // MouseArea to catch clicks on badges and prevent window hide
                 MouseArea {
@@ -424,6 +438,55 @@ Rectangle {
                     }
                 }
 
+                // Anti-champion filters use the same centralized presentation
+                // data as weapon rows and sorting.
+                Repeater {
+                    model: searchModel.activeBreakerFilters
+
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: breakerFilterRow.implicitWidth + 12
+                        height: resultCountBadge.height
+                        radius: 4
+                        color: "#18282b"
+                        border.color: "#45c8c2"
+                        border.width: 1
+
+                        Row {
+                            id: breakerFilterRow
+                            anchors.centerIn: parent
+                            spacing: 5
+
+                            Image {
+                                width: 14
+                                height: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                                source: modelData.icon
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
+                                antialiasing: true
+                            }
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.label
+                                font.family: searchWindow.mainFont
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                color: "#68d7d2"
+                            }
+                        }
+
+                        HoverHandler {
+                            id: breakerFilterHover
+                        }
+
+                        ToolTip.visible: breakerFilterHover.hovered
+                        ToolTip.delay: 300
+                        ToolTip.text: modelData.displayName + "\n" + modelData.description
+                    }
+                }
+
                 // Trait filter badges
                 Repeater {
                     model: searchModel.activeTraitFilters
@@ -485,6 +548,8 @@ Rectangle {
                     radius: 6
                     color: "#1a1a1a"
 
+                    Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+
                     Row {
                         id: resultCountRow
                         anchors.centerIn: parent
@@ -527,6 +592,8 @@ Rectangle {
                 focus: true
                 clip: true  // Clip text within bounds
                 enabled: !isLoading
+
+                Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                 
                 // Show I-beam cursor on hover
                 MouseArea {
@@ -576,12 +643,13 @@ Rectangle {
                 }
 
                 Keys.onReturnPressed: function(event) {
+                    var forceBrowser = (event.modifiers & Qt.ControlModifier) !== 0
                     if (resultsList.currentIndex >= 0) {
-                        searchModel.openWeapon(resultsList.currentIndex)
+                        searchModel.openWeapon(resultsList.currentIndex, forceBrowser)
                         searchWindow.close()
                     } else if (resultsList.count > 0) {
                         // If nothing selected but there are results, open first one
-                        searchModel.openWeapon(0)
+                        searchModel.openWeapon(0, forceBrowser)
                         searchWindow.close()
                     }
                     event.accepted = true
@@ -646,11 +714,16 @@ Rectangle {
         Rectangle {
             id: sourceFilterBar
             Layout.fillWidth: true
-            Layout.preferredHeight: 36
-            visible: searchModel.activeSourceFilters.length > 0
+            property bool shown: searchModel.activeSourceFilters.length > 0
+            Layout.preferredHeight: shown ? 36 : 0
+            visible: opacity > 0
+            opacity: shown ? 1 : 0
             color: "#B31a2a2a"  // Semi-transparent background (70% opacity)
             radius: 8
             clip: true
+
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
             
             Row {
                 anchors.left: parent.left
@@ -786,17 +859,19 @@ Rectangle {
                 highlighted: resultsList.currentIndex === index
                 fontFamily: searchWindow.mainFont
                 
-                onClicked: {
-                    searchModel.openWeapon(index)
+                onClicked: function(modifiers) {
+                    searchModel.openWeapon(index,
+                        (modifiers & Qt.ControlModifier) !== 0)
                     searchWindow.close()
                 }
                 
-                onMiddleClicked: {
+                onMiddleClicked: function(modifiers) {
                     // Open weapon and request refocus after browser takes focus
-                    searchModel.openWeapon(index)
+                    searchModel.openWeapon(index,
+                        (modifiers & Qt.ControlModifier) !== 0)
                     searchWindow.refocusNeeded()
                 }
-                
+
                 onHoveredChanged: {
                     // Only respond to hover if mouse has moved since window appeared
                     if (hovered && searchWindow.mouseHasMoved) {
@@ -921,17 +996,24 @@ Rectangle {
         
         // Update available hint
         Text {
+            id: updateAvailableHint
             Layout.fillWidth: true
             Layout.topMargin: -8
             visible: updateChecker.updateAvailable
             text: "Update Available (v" + updateChecker.latestVersion + ")"
             font.family: searchWindow.mainFont
             font.pixelSize: 12
-            color: "#4dd0e1"
+            color: updateHintMouse.containsMouse ? "#ffffff" : "#4dd0e1"
             horizontalAlignment: Text.AlignHCenter
+            scale: updateHintMouse.containsMouse ? 1.03 : 1
+
+            Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
             
             MouseArea {
+                id: updateHintMouse
                 anchors.fill: parent
+                hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     updateDialog.show()

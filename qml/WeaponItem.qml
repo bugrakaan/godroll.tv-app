@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls.Basic
 
 Rectangle {
     id: root
@@ -10,13 +11,15 @@ Rectangle {
     property bool hovered: false
     property bool highlighted: false
     property string fontFamily: "Segoe UI"
+    scale: itemMouseArea.pressed ? 0.995 : 1
     
-    signal clicked()
-    signal middleClicked()  // Middle click to open without closing window
+    signal clicked(int modifiers)
+    signal middleClicked(int modifiers)  // Middle click to open without closing window
 
     Behavior on color {
-        ColorAnimation { duration: 100 }
+        ColorAnimation { duration: 120; easing.type: Easing.OutCubic }
     }
+    Behavior on scale { NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
 
     // Left accent border
     Rectangle {
@@ -53,9 +56,9 @@ Rectangle {
         onExited: root.hovered = false
         onClicked: function(mouse) {
             if (mouse.button === Qt.MiddleButton) {
-                root.middleClicked()
+                root.middleClicked(mouse.modifiers)
             } else {
-                root.clicked()
+                root.clicked(mouse.modifiers)
             }
         }
     }
@@ -83,6 +86,8 @@ Rectangle {
                 return "#c0bbb4"                         // Common - white/grey
             }
             border.width: 1
+
+            Behavior on border.color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
             Image {
                 id: weaponIcon
@@ -235,6 +240,44 @@ Rectangle {
                     cache: true
                     asynchronous: true
                 }
+
+                // Accelerated Assault origin trait
+                Image {
+                    visible: model.hasAcceleratedAssault === true
+                    source: "qrc:/qt/qml/GodrollLauncher/resources/accelerated-assault.png"
+                    Layout.preferredWidth: 18
+                    Layout.preferredHeight: 18
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+                    antialiasing: true
+                }
+
+                // Backend-owned anti-champion capability. Unknown and null
+                // values intentionally expose no presentation role.
+                Item {
+                    id: antiChampionBadge
+                    visible: model.hasAntiChampion === true
+                    Layout.preferredWidth: visible ? 18 : 0
+                    Layout.preferredHeight: 18
+
+                    Image {
+                        anchors.fill: parent
+                        source: model.antiChampionIcon || ""
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                        mipmap: true
+                        antialiasing: true
+                    }
+
+                    HoverHandler {
+                        id: antiChampionHover
+                    }
+
+                    ToolTip.visible: antiChampionBadge.visible && antiChampionHover.hovered
+                    ToolTip.delay: 300
+                    ToolTip.text: model.antiChampionDisplayName + "\n" + model.antiChampionDescription
+                }
                 
                 // ID match badge — shown only when search matched by hash ID
                 Rectangle {
@@ -284,6 +327,10 @@ Rectangle {
                     radius: 4
                     Layout.preferredWidth: weaponTypeText.implicitWidth + (isMatched ? 12 : 0)
                     Layout.preferredHeight: weaponTypeText.implicitHeight + (isMatched ? 6 : 0)
+
+                    Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    Behavior on Layout.preferredWidth { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    Behavior on Layout.preferredHeight { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     
                     Text {
                         id: weaponTypeText
@@ -293,6 +340,8 @@ Rectangle {
                         font.pixelSize: 14
                         font.weight: Font.Medium
                         color: parent.isMatched ? "#d7a909" : "#999999"
+
+                        Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     }
                 }
 
@@ -311,6 +360,10 @@ Rectangle {
                     radius: 4
                     Layout.preferredWidth: frameTypeText.implicitWidth + (isMatched ? 12 : 0)
                     Layout.preferredHeight: frameTypeText.implicitHeight + (isMatched ? 6 : 0)
+
+                    Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    Behavior on Layout.preferredWidth { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    Behavior on Layout.preferredHeight { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     
                     Text {
                         id: frameTypeText
@@ -319,6 +372,8 @@ Rectangle {
                         font.family: root.fontFamily
                         font.pixelSize: 14
                         color: parent.isMatched ? "#d7a909" : "#888888"
+
+                        Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     }
                 }
 
@@ -337,6 +392,10 @@ Rectangle {
                     radius: 4
                     Layout.preferredWidth: seasonText.implicitWidth + (isMatched ? 12 : 0)
                     Layout.preferredHeight: seasonText.implicitHeight + (isMatched ? 6 : 0)
+
+                    Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    Behavior on Layout.preferredWidth { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    Behavior on Layout.preferredHeight { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     
                     Text {
                         id: seasonText
@@ -345,6 +404,8 @@ Rectangle {
                         font.family: root.fontFamily
                         font.pixelSize: 14
                         color: parent.isMatched ? "#d7a909" : "#666666"
+
+                        Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     }
                 }
 
@@ -363,6 +424,10 @@ Rectangle {
                     radius: 4
                     Layout.preferredWidth: seasonNameText.implicitWidth + (isMatched ? 12 : 0)
                     Layout.preferredHeight: seasonNameText.implicitHeight + (isMatched ? 6 : 0)
+
+                    Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    Behavior on Layout.preferredWidth { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    Behavior on Layout.preferredHeight { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     
                     Text {
                         id: seasonNameText
@@ -371,6 +436,8 @@ Rectangle {
                         font.family: root.fontFamily
                         font.pixelSize: 14
                         color: parent.isMatched ? "#d7a909" : "#666666"
+
+                        Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     }
                 }
 

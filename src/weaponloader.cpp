@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QDateTime>
 #include <QDebug>
+#include <QUrlQuery>
 
 WeaponLoader::WeaponLoader(QObject *parent)
     : QObject(parent)
@@ -27,6 +28,8 @@ void WeaponLoader::loadWeapons(std::function<void(const QJsonArray&)> callback,
     m_callback = callback;
     m_retryCount = 0;
     m_maxRetries = qMax(0, maxRetries);
+    m_forceFreshRequest = false;
+    m_schemaRefreshAttempted = false;
     
     startRequest();
 }
@@ -39,11 +42,28 @@ void WeaponLoader::startRequest()
     qDebug() << "Loading weapons from API..." << (m_retryCount > 0 ? QString("(retry %1/%2)").arg(m_retryCount).arg(m_maxRetries) : "");
     emit loadStatusChanged(m_retryCount > 0
         ? QString("Trying to load your weapons again (%1 of %2)...").arg(m_retryCount).arg(m_maxRetries)
-        : QString("Connecting to Godroll TV..."));
+        : QString("Connecting to Godroll.tv..."));
     
-    // Load weapons from your API with source=app to get perkColumns data
-    QNetworkRequest request(QUrl("https://godroll.tv/api/weapons/list?source=app"));
+    // Version the response contract so an older HTTP cache entry cannot fill
+    // the in-memory cache after antiChampionType was added.
+    QUrl url("https://godroll.tv/api/weapons/list");
+    QUrlQuery query;
+    query.addQueryItem("source", "app");
+    query.addQueryItem("schema", "anti-champion-v1");
+    const bool forceFresh = m_forceFreshRequest;
+    m_forceFreshRequest = false;
+    if (forceFresh)
+        query.addQueryItem("refresh", QString::number(QDateTime::currentMSecsSinceEpoch()));
+    url.setQuery(query);
+
+    QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    request.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
+                         QNetworkRequest::AlwaysNetwork);
+    if (forceFresh) {
+        request.setRawHeader("Cache-Control", "no-cache, no-store, max-age=0");
+        request.setRawHeader("Pragma", "no-cache");
+    }
     
     m_currentReply = m_networkManager->get(request);
     
@@ -102,6 +122,22 @@ void WeaponLoader::onNetworkReply(QNetworkReply *reply)
             if (obj.contains("weapons") && obj["success"].toBool()) {
                 emit loadStatusChanged("Organizing your weapons...");
                 QJsonArray weapons = obj["weapons"].toArray();
+                const bool hasCurrentSchema = hasCurrentAntiChampionSchema(weapons);
+
+                if (!hasCurrentSchema && !m_schemaRefreshAttempted) {
+                    qWarning() << "Weapon data is missing antiChampionType; invalidating caches and refreshing once";
+                    m_schemaRefreshAttempted = true;
+                    m_forceFreshRequest = true;
+                    m_cachedWeapons = QJsonArray();
+                    reply->deleteLater();
+                    m_currentReply = nullptr;
+                    startRequest();
+                    return;
+                }
+
+                if (!hasCurrentSchema) {
+                    qWarning() << "Weapon data still uses the old schema after refresh; champion UI will stay hidden";
+                }
                 
                 // Process weapons to add season info from traitIds
                 QJsonArray processedWeapons;
@@ -139,8 +175,8 @@ void WeaponLoader::onNetworkReply(QNetworkReply *reply)
                 qDebug() << "Loaded" << processedWeapons.size() << "weapons";
                 m_currentReply = nullptr;
                 
-                // Cache for spam protection
-                m_cachedWeapons = processedWeapons;
+                // Never retain an old-schema response in the memory cache.
+                m_cachedWeapons = hasCurrentSchema ? processedWeapons : QJsonArray();
                 
                 // Emit signal for QML connections
                 emit weaponsLoaded(processedWeapons);
@@ -221,5 +257,16 @@ void WeaponLoader::reload()
     emit reloadStarted();
     m_retryCount = 0;
     m_maxRetries = MAX_RETRIES;
+    m_forceFreshRequest = false;
+    m_schemaRefreshAttempted = false;
     startRequest();
+}
+
+bool WeaponLoader::hasCurrentAntiChampionSchema(const QJsonArray &weapons)
+{
+    for (const QJsonValue &value : weapons) {
+        if (!value.toObject().contains("antiChampionType"))
+            return false;
+    }
+    return true;
 }
