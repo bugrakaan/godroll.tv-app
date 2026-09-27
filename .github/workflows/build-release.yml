@@ -149,12 +149,10 @@ jobs:
           ## Godroll Launcher v${{ steps.new_version.outputs.NEW_VERSION }}
 
           ### Changes in This Version
-          - Anti-Champion icons now show whether a weapon counters Barrier, Overload, or Unstoppable Champions
-          - Use `-b` with any starting part of a Champion type, such as `-b b`, `-b ove`, or `-b uns`, to filter weapons
-          - Accelerated Assault icons have been added to weapon results
-          - Use `Prefer PWA Mode` in the tray menu to choose between app-style windows and browser tabs
+          - Fixed weapon ordering so Anti-Champion types no longer affect search results or the latest-season list
           
           ### Search Features
+          - Use `-b` with any starting part of a Champion type, such as `-b b`, `-b ove`, or `-b uns`, to filter weapons
           - **Flag modifiers**: `-!` (unique), `-*` (all), `-h` (holofoil), `-a` (adept), `-e` (exotic), `-c` (craftable)
           - **Source filter**: `-s <source>` to filter by raid/dungeon/activity (e.g., `-s se` for Salvation's Edge)
           - **Trait filter**: `-t <trait>` searches both perks and origin traits
@@ -174,6 +172,9 @@ jobs:
           - `-s nightfall` → Nightfall
 
           ### Launcher & Window
+          - Anti-Champion icons show whether a weapon counters Barrier, Overload, or Unstoppable Champions
+          - Accelerated Assault icons appear in weapon results
+          - Use `Prefer PWA Mode` in the tray menu to choose between app-style windows and browser tabs
           - A startup screen shows boot progress and automatically retries if the launcher cannot start
           - The system tray menu includes a dedicated `Show` action to bring the launcher into view
           - Weapon links open reliably in the user's preferred browser

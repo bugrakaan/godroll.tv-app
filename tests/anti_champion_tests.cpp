@@ -30,7 +30,8 @@ private slots:
     void presentationUsesOnlyKnownValues();
     void schemaDistinguishesNullFromMissing();
     void breakerFilterSupportsKnownTypesAndOrQueries();
-    void resultsUsePresentationOrder();
+    void breakerTypeDoesNotAffectWeaponOrder_data();
+    void breakerTypeDoesNotAffectWeaponOrder();
 };
 
 void AntiChampionTests::presentationUsesOnlyKnownValues()
@@ -111,37 +112,61 @@ void AntiChampionTests::breakerFilterSupportsKnownTypesAndOrQueries()
     QCOMPARE(model.rowCount(), 0);
 }
 
-void AntiChampionTests::resultsUsePresentationOrder()
+void AntiChampionTests::breakerTypeDoesNotAffectWeaponOrder_data()
 {
+    QTest::addColumn<QString>("query");
+    QTest::addColumn<QStringList>("expectedNames");
+    const QStringList latest {"A test", "B test", "C test", "D test", "E test"};
+    QStringList all = latest;
+    all.append("A old");
+    QTest::newRow("latest-season") << QString() << latest;
+    QTest::newRow("all-weapons") << QStringLiteral("-*") << all;
+    // The old weapon also matches "Test Weapon" metadata, after name matches.
+    QTest::newRow("name-search") << QStringLiteral("test") << all;
+    QTest::newRow("breaker-filter")
+        << QStringLiteral("-b b -b o -b u")
+        << QStringList {"B test", "C test", "D test", "A old"};
+}
+
+void AntiChampionTests::breakerTypeDoesNotAffectWeaponOrder()
+{
+    QFETCH(QString, query);
+    QFETCH(QStringList, expectedNames);
+    QJsonObject oldWeapon = weapon("A old", "barrier");
+    oldWeapon["seasonNumber"] = 25;
+    QJsonArray weapons {
+        weapon("D test", "barrier"),
+        weapon("E test", "future-type"),
+        oldWeapon,
+        weapon("B test", "unstoppable"),
+        weapon("A test", QJsonValue::Null),
+        weapon("C test", "overload")
+    };
+
     WeaponSearchModel model;
-    model.setWeapons(QJsonArray {
-        weapon(QStringLiteral("A null"), QJsonValue::Null),
-        weapon(QStringLiteral("B unstoppable"), QStringLiteral("unstoppable")),
-        weapon(QStringLiteral("C overload"), QStringLiteral("overload")),
-        weapon(QStringLiteral("D barrier"), QStringLiteral("barrier")),
-        weapon(QStringLiteral("E unknown"), QStringLiteral("future-type"))
-    });
-    model.setSearchQuery(QStringLiteral("-*"));
+    model.setSearchQuery(query);
+    // Swap known breaker assignments and ensure the order stays unchanged.
+    for (int pass = 0; pass < 2; ++pass) {
+        model.setWeapons(weapons);
+        model.setShowLatestSeason(true);
+        QStringList names;
+        for (int row = 0; row < model.rowCount(); ++row)
+            names.append(model.data(model.index(row), WeaponSearchModel::NameRole).toString());
+        QCOMPARE(names, expectedNames);
 
-    QCOMPARE(model.rowCount(), 5);
-    QCOMPARE(model.data(model.index(0), WeaponSearchModel::AntiChampionTypeRole).toString(),
-             QStringLiteral("barrier"));
-    QCOMPARE(model.data(model.index(1), WeaponSearchModel::AntiChampionTypeRole).toString(),
-             QStringLiteral("overload"));
-    QCOMPARE(model.data(model.index(2), WeaponSearchModel::AntiChampionTypeRole).toString(),
-             QStringLiteral("unstoppable"));
-    QVERIFY(!model.data(model.index(3), WeaponSearchModel::HasAntiChampionRole).toBool());
+        for (int i = 0; i < weapons.size(); ++i) {
+            QJsonObject entry = weapons[i].toObject();
+            if (entry["antiChampionType"] == QJsonValue("barrier"))
+                entry["antiChampionType"] = "unstoppable";
+            else if (entry["antiChampionType"] == QJsonValue("unstoppable"))
+                entry["antiChampionType"] = "barrier";
+            weapons[i] = entry;
+        }
+    }
+
+    model.setSearchQuery("-*");
+    QVERIFY(!model.data(model.index(0), WeaponSearchModel::HasAntiChampionRole).toBool());
     QVERIFY(!model.data(model.index(4), WeaponSearchModel::HasAntiChampionRole).toBool());
-
-    model.setSearchQuery(QString());
-    model.setShowLatestSeason(true);
-    QCOMPARE(model.rowCount(), 5);
-    QCOMPARE(model.data(model.index(0), WeaponSearchModel::AntiChampionTypeRole).toString(),
-             QStringLiteral("barrier"));
-    QCOMPARE(model.data(model.index(1), WeaponSearchModel::AntiChampionTypeRole).toString(),
-             QStringLiteral("overload"));
-    QCOMPARE(model.data(model.index(2), WeaponSearchModel::AntiChampionTypeRole).toString(),
-             QStringLiteral("unstoppable"));
 }
 
 QTEST_GUILESS_MAIN(AntiChampionTests)

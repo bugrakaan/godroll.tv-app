@@ -972,22 +972,9 @@ void WeaponSearchModel::filterWeapons()
                 }
             }
             
-            // Keep the backend presentation order even in the default latest-
-            // season view, then sort alphabetically within each breaker group.
+            // Latest-season weapons retain alphabetical order regardless of breaker type.
             std::sort(latestSeasonWeapons.begin(), latestSeasonWeapons.end(),
                       [](const auto &a, const auto &b) {
-                          const QJsonObject weaponA = a.second.toObject();
-                          const QJsonObject weaponB = b.second.toObject();
-                          const int championOrderA = ChampionPresentation::orderForType(
-                              weaponA["antiChampionType"].isString()
-                                  ? weaponA["antiChampionType"].toString()
-                                  : QString());
-                          const int championOrderB = ChampionPresentation::orderForType(
-                              weaponB["antiChampionType"].isString()
-                                  ? weaponB["antiChampionType"].toString()
-                                  : QString());
-                          if (championOrderA != championOrderB)
-                              return championOrderA < championOrderB;
                           return a.first.toLower() < b.first.toLower();
                       });
             
@@ -1325,18 +1312,6 @@ void WeaponSearchModel::filterWeapons()
 
                       if (fullNameScoreA != fullNameScoreB) {
                           return fullNameScoreA > fullNameScoreB;
-                      }
-
-                      const int championOrderA = ChampionPresentation::orderForType(
-                          weaponA["antiChampionType"].isString()
-                              ? weaponA["antiChampionType"].toString()
-                              : QString());
-                      const int championOrderB = ChampionPresentation::orderForType(
-                          weaponB["antiChampionType"].isString()
-                              ? weaponB["antiChampionType"].toString()
-                              : QString());
-                      if (championOrderA != championOrderB) {
-                          return championOrderA < championOrderB;
                       }
 
                       if (nameA != nameB) {
